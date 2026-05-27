@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "skipLibCheck": true,
+    "types": ["bun-types"],
+    // Note: bun-types is installed as a dependency of @types/bun.
+    // Run `bun install` in backend/ to resolve all type errors shown by the IDE.
+    "paths": {
+      "@shared/*": ["../shared/*"]
+    }
+  },
+  "include": [".", "../shared"]
+}

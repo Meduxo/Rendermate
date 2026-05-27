@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rendermate</title>
+    <style>
+      *, *::before, *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html, body {
+        background: #111;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        min-height: 100vh;
+        padding: 24px;
+        gap: 16px;
+        font-family: monospace;
+      }
+
+      /* ── Controls bar ─────────────────────────────────────────── */
+      #controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+
+      /* Scale slider */
+      #scale-slider {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 180px;
+        height: 4px;
+        background: #444;
+        border-radius: 2px;
+        outline: none;
+        cursor: pointer;
+      }
+      #scale-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #ccc;
+        cursor: pointer;
+      }
+      #scale-slider::-moz-range-thumb {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #ccc;
+        cursor: pointer;
+        border: none;
+      }
+
+      /* Shared button style */
+      .btn {
+        background: #2a2a2a;
+        color: #ccc;
+        border: 1px solid #555;
+        border-radius: 4px;
+        padding: 4px 14px;
+        font-size: 13px;
+        font-family: monospace;
+        cursor: pointer;
+        line-height: 1.6;
+        transition: background 0.1s;
+        user-select: none;
+      }
+      .btn:hover:not(:disabled) {
+        background: #3a3a3a;
+      }
+      .btn:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
+
+      /* History position indicator */
+      #history-pos {
+        color: #666;
+        font-size: 12px;
+        min-width: 60px;
+        text-align: center;
+      }
+
+      /* ── Canvas ───────────────────────────────────────────────── */
+      #grid {
+        display: block;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+      }
+
+      /* ── Status / error message ───────────────────────────────── */
+      #status {
+        color: #888;
+        font-size: 12px;
+        min-height: 16px;
+      }
+      #status.error {
+        color: #e06c75;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="controls">
+      <!-- History navigation -->
+      <button id="btn-back"    class="btn" disabled>&#8592;</button>
+      <span   id="history-pos">0 / 0</span>
+      <button id="btn-forward" class="btn" disabled>&#8594;</button>
+
+      <!-- Scale -->
+      <input id="scale-slider" type="range" min="0" max="2" step="0.01" value="1" />
+
+      <!-- Reload -->
+      <button id="btn-reload" class="btn">Reload</button>
+    </div>
+
+    <canvas id="grid"></canvas>
+    <div id="status"></div>
+
+    <!-- Vite resolves this TypeScript entry point at build time -->
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

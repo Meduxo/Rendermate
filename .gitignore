@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# Bun lockfiles (commit bun.lockb for reproducible installs)
+# bun.lockb
+
+# Build output
+frontend/dist/
+
+# Runtime data — the pipeline writes here.
+# data/grid.json is gitignored so pipeline output is never accidentally committed.
+data/grid.json
+
+# OS / editor
+.DS_Store
+.vscode/settings.json
+*.swp

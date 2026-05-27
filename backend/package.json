@@ -1,0 +1,14 @@
+{
+  "name": "rendermate-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rendermate backend — Bun HTTP server that serves grid data",
+  "scripts": {
+    "dev":   "bun run --watch server.ts",
+    "start": "bun run server.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.4.5"
+  }
+}
