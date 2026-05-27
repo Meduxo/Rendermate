@@ -17,3 +17,8 @@ data/grid.json
 .DS_Store
 .vscode/settings.json
 *.swp
+
+# Script runtime artefacts
+.pids
+backend.log
+frontend.log

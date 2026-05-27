@@ -91,6 +91,46 @@
         text-align: center;
       }
 
+      /* ── Separator ────────────────────────────────────────────── */
+      .sep {
+        width: 1px;
+        height: 20px;
+        background: #333;
+        flex-shrink: 0;
+      }
+
+      /* ── Dataset select ───────────────────────────────────────── */
+      #dataset-select {
+        background: #2a2a2a;
+        color: #ccc;
+        border: 1px solid #555;
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: 13px;
+        font-family: monospace;
+        cursor: pointer;
+        line-height: 1.6;
+        outline: none;
+        max-width: 200px;
+      }
+      #dataset-select:hover {
+        background: #3a3a3a;
+      }
+      #dataset-select option {
+        background: #1e1e1e;
+        color: #ccc;
+      }
+
+      /* ── File picker ──────────────────────────────────────────── */
+      /* Hide the native input; the label acts as the button. */
+      #file-input {
+        display: none;
+      }
+      #btn-open-file {
+        position: relative;
+        overflow: hidden;
+      }
+
       /* ── Canvas ───────────────────────────────────────────────── */
       #grid {
         display: block;
@@ -119,8 +159,21 @@
       <!-- Scale -->
       <input id="scale-slider" type="range" min="0" max="2" step="0.01" value="1" />
 
-      <!-- Reload -->
+      <!-- Reload from server -->
       <button id="btn-reload" class="btn">Reload</button>
+
+      <div class="sep"></div>
+
+      <!-- Built-in dataset selector -->
+      <select id="dataset-select" title="Load a built-in dataset">
+        <option value="" disabled selected>— datasets —</option>
+      </select>
+
+      <!-- Local file picker -->
+      <label class="btn" id="btn-open-file" title="Open a local JSON file">
+        Open file…
+        <input id="file-input" type="file" accept=".json,application/json" />
+      </label>
     </div>
 
     <canvas id="grid"></canvas>

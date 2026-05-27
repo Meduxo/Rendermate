@@ -4,8 +4,11 @@
  * Rendermate backend — a minimal Bun HTTP server.
  *
  * Routes:
- *   GET /api/grid   → reads data/grid.json and returns it as JSON
- *   GET /health     → returns 200 OK (useful for scripted health checks)
+ *   GET  /api/grid          → reads the active GridPayload (uploaded or data/grid.json)
+ *   GET  /api/grid/list     → returns names of all .json files in data/
+ *   GET  /api/grid/:name    → reads data/<name>.json and returns it as JSON
+ *   POST /api/grid/upload   → accepts a JSON body, stores it in memory as the active grid
+ *   GET  /health            → returns 200 OK (useful for scripted health checks)
  *
  * Pipeline integration:
  *   Write a JSON file to `data/grid.json` in the project root.
@@ -19,17 +22,74 @@
 
 import type { GridPayload } from "../shared/types";
 import path from "path";
+import fs from "fs/promises";
 
 const PORT      = parseInt(process.env.PORT ?? "3000", 10);
-const DATA_FILE = path.resolve(import.meta.dir, "../data/grid.json");
+const DATA_DIR  = path.resolve(import.meta.dir, "../data");
+const DATA_FILE = path.join(DATA_DIR, "grid.json");
+
+// ── In-memory override ────────────────────────────────────────────────────────
+// When a user uploads a file via POST /api/grid/upload, it is stored here and
+// takes precedence over data/grid.json until the server restarts or another
+// file is loaded.
+
+let _uploadedPayload: GridPayload | null = null;
 
 // ── CORS headers (permissive for local dev) ───────────────────────────────────
 
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin":  "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function jsonResponse(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+  });
+}
+
+function jsonError(status: number, message: string): Response {
+  return jsonResponse({ error: message }, status);
+}
+
+/**
+ * Validate that a parsed value looks like a GridPayload.
+ * Returns an error string if invalid, or null if valid.
+ */
+function validatePayload(payload: unknown): string | null {
+  if (typeof payload !== "object" || payload === null) {
+    return "Payload must be a JSON object.";
+  }
+  const p = payload as Record<string, unknown>;
+  if (!Array.isArray(p.grid) || p.grid.length === 0) {
+    return "Payload must contain a non-empty 'grid' array.";
+  }
+  return null;
+}
+
+/**
+ * Read and parse a GridPayload from a file path.
+ * Returns [payload, null] on success, [null, errorMessage] on failure.
+ */
+async function readPayloadFile(filePath: string): Promise<[GridPayload | null, string | null]> {
+  try {
+    const file = Bun.file(filePath);
+    if (!(await file.exists())) {
+      return [null, `File not found: ${filePath}`];
+    }
+    const raw     = await file.text();
+    const payload = JSON.parse(raw) as GridPayload;
+    const err     = validatePayload(payload);
+    if (err) return [null, err];
+    return [payload, null];
+  } catch (e) {
+    return [null, e instanceof Error ? e.message : String(e)];
+  }
+}
 
 // ── Request handler ───────────────────────────────────────────────────────────
 
@@ -45,39 +105,77 @@ Bun.serve({
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
 
-    // ── GET /api/grid ─────────────────────────────────────────────────────────
-    if (method === "GET" && url.pathname === "/api/grid") {
+    // ── GET /api/grid/list ────────────────────────────────────────────────────
+    // Returns an array of dataset names (filenames without .json extension)
+    // found in the data/ directory.
+    if (method === "GET" && url.pathname === "/api/grid/list") {
       try {
-        const file = Bun.file(DATA_FILE);
-
-        if (!(await file.exists())) {
-          return jsonError(404, `Data file not found: ${DATA_FILE}`);
-        }
-
-        const raw     = await file.text();
-        const payload = JSON.parse(raw) as GridPayload;
-
-        // Basic validation — ensure the grid field is a non-empty 2D array.
-        if (!Array.isArray(payload.grid) || payload.grid.length === 0) {
-          return jsonError(422, "grid.json must contain a non-empty 'grid' array.");
-        }
-
-        return new Response(JSON.stringify(payload), {
-          status:  200,
-          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-        });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        return jsonError(500, `Failed to read data file: ${msg}`);
+        const entries = await fs.readdir(DATA_DIR);
+        const names   = entries
+          .filter(f => f.endsWith(".json"))
+          .map(f => f.slice(0, -5)); // strip .json
+        return jsonResponse({ datasets: names });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return jsonError(500, `Failed to list data directory: ${msg}`);
       }
+    }
+
+    // ── POST /api/grid/upload ─────────────────────────────────────────────────
+    // Accepts a JSON body conforming to GridPayload, stores it in memory.
+    if (method === "POST" && url.pathname === "/api/grid/upload") {
+      try {
+        const body    = await req.text();
+        const payload = JSON.parse(body) as GridPayload;
+        const err     = validatePayload(payload);
+        if (err) return jsonError(422, err);
+
+        _uploadedPayload = payload;
+        return jsonResponse({ ok: true, rows: payload.grid.length, cols: payload.grid[0]?.length ?? 0 });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return jsonError(400, `Invalid JSON: ${msg}`);
+      }
+    }
+
+    // ── GET /api/grid/:name ───────────────────────────────────────────────────
+    // Loads a named dataset from data/<name>.json.
+    // The name must be a plain filename token (no slashes, no ..).
+    const namedMatch = url.pathname.match(/^\/api\/grid\/([A-Za-z0-9_\-]+)$/);
+    if (method === "GET" && namedMatch) {
+      const name     = namedMatch[1];
+      const filePath = path.join(DATA_DIR, `${name}.json`);
+
+      // Prevent path traversal — ensure resolved path stays inside DATA_DIR.
+      if (!filePath.startsWith(DATA_DIR + path.sep) && filePath !== DATA_DIR) {
+        return jsonError(400, "Invalid dataset name.");
+      }
+
+      const [payload, err] = await readPayloadFile(filePath);
+      if (err) return jsonError(404, err);
+      return jsonResponse(payload!);
+    }
+
+    // ── GET /api/grid ─────────────────────────────────────────────────────────
+    // Returns the active payload: uploaded > data/grid.json.
+    if (method === "GET" && url.pathname === "/api/grid") {
+      // Prefer in-memory upload.
+      if (_uploadedPayload) {
+        return jsonResponse(_uploadedPayload);
+      }
+
+      const [payload, err] = await readPayloadFile(DATA_FILE);
+      if (err) {
+        // Distinguish "file missing" (404) from other errors (500).
+        const status = err.includes("not found") ? 404 : 500;
+        return jsonError(status, status === 404 ? `Data file not found: ${DATA_FILE}` : `Failed to read data file: ${err}`);
+      }
+      return jsonResponse(payload!);
     }
 
     // ── GET /health ───────────────────────────────────────────────────────────
     if (method === "GET" && url.pathname === "/health") {
-      return new Response(JSON.stringify({ status: "ok" }), {
-        status:  200,
-        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ status: "ok" });
     }
 
     // ── 404 fallback ──────────────────────────────────────────────────────────
@@ -86,12 +184,3 @@ Bun.serve({
 });
 
 console.log(`Rendermate backend listening on http://localhost:${PORT}`);
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function jsonError(status: number, message: string): Response {
-  return new Response(JSON.stringify({ error: message }), {
-    status,
-    headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-  });
-}
