@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Grid Viewer</title>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      background: #111;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
+      padding: 24px;
+      gap: 16px;
+    }
+
+    #controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    #scale-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 200px;
+      height: 4px;
+      background: #444;
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    #scale-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #ccc;
+      cursor: pointer;
+    }
+
+    #scale-slider::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #ccc;
+      cursor: pointer;
+      border: none;
+    }
+
+    #reload-btn {
+      background: #333;
+      color: #ccc;
+      border: 1px solid #555;
+      border-radius: 4px;
+      padding: 4px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      line-height: 1.6;
+    }
+
+    #reload-btn:hover {
+      background: #444;
+    }
+
+    #grid {
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="controls">
+    <input id="scale-slider" type="range" min="0" max="2" step="0.01" value="1" />
+    <button id="reload-btn">Reload</button>
+  </div>
+
+  <canvas id="grid"></canvas>
+
+  <script>
+    // ─── USER DATA ────────────────────────────────────────────────────────────
+    // Edit DATA to visualize any 2D array of floats in [0, 1].
+    // Rows = DATA.length, Cols = DATA[0].length
+    const DATA = (function () {
+      const rows = 32;
+      const cols = 64;
+      const arr = [];
+      for (let r = 0; r < rows; r++) {
+        const row = [];
+        for (let c = 0; c < cols; c++) {
+          // Sample: smooth gradient + sine wave pattern
+          const u = c / (cols - 1);
+          const v = r / (rows - 1);
+          row.push(
+            0.5 * u + 0.3 * Math.sin(v * Math.PI * 4) * Math.cos(u * Math.PI * 3) + 0.2 * v
+          );
+        }
+        arr.push(row);
+      }
+      return arr;
+    })();
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const PIXEL_SIZE = 1; // px per grid cell
+
+    const canvas = document.getElementById('grid');
+    const ctx    = canvas.getContext('2d');
+    const slider = document.getElementById('scale-slider');
+    const btn    = document.getElementById('reload-btn');
+
+    function render() {
+      const rows  = DATA.length;
+      const cols  = rows > 0 ? DATA[0].length : 0;
+      const scale = parseFloat(slider.value);
+
+      canvas.width  = cols * PIXEL_SIZE;
+      canvas.height = rows * PIXEL_SIZE;
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const raw     = DATA[r][c] ?? 0;
+          const clamped = Math.min(1, Math.max(0, raw * scale));
+          const byte    = Math.round(clamped * 255);
+          ctx.fillStyle = `rgb(${byte},${byte},${byte})`;
+          ctx.fillRect(c * PIXEL_SIZE, r * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+        }
+      }
+    }
+
+    slider.addEventListener('input', render);
+
+    btn.addEventListener('click', function () {
+      slider.value = '1';
+      render();
+    });
+
+    render();
+  </script>
+
+</body>
+</html>
