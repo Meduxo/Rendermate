@@ -32,33 +32,21 @@
         justify-content: center;
       }
 
-      /* Scale slider */
-      #scale-slider {
-        -webkit-appearance: none;
-        appearance: none;
-        width: 180px;
-        height: 4px;
-        background: #444;
-        border-radius: 2px;
+      /* Saturation point input */
+      #sat-point {
+        background: #2a2a2a;
+        color: #ccc;
+        border: 1px solid #555;
+        border-radius: 4px;
+        padding: 2px 6px;
+        font-size: 12px;
+        font-family: monospace;
+        width: 80px;
         outline: none;
-        cursor: pointer;
       }
-      #scale-slider::-webkit-slider-thumb {
-        -webkit-appearance: none;
-        appearance: none;
-        width: 14px;
-        height: 14px;
-        border-radius: 50%;
-        background: #ccc;
-        cursor: pointer;
-      }
-      #scale-slider::-moz-range-thumb {
-        width: 14px;
-        height: 14px;
-        border-radius: 50%;
-        background: #ccc;
-        cursor: pointer;
-        border: none;
+      #sat-point:disabled {
+        opacity: 0.5;
+        cursor: default;
       }
 
       /* Shared button style */
@@ -179,6 +167,44 @@
         border-color: #888;
       }
 
+      /* ── 3D grid container ────────────────────────────────────── */
+      #grid3d-container {
+        display: none;
+        width: 512px;
+        height: 512px;
+      }
+      #grid3d-container canvas {
+        display: block;
+      }
+
+      /* ── Relief controls ──────────────────────────────────────── */
+      .relief-check-label {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        cursor: pointer;
+        color: #666;
+        font-size: 12px;
+        font-family: monospace;
+        user-select: none;
+      }
+      #relief-controls {
+        display: none;
+        align-items: center;
+        gap: 6px;
+      }
+      #relief-offset {
+        background: #2a2a2a;
+        color: #ccc;
+        border: 1px solid #555;
+        border-radius: 4px;
+        padding: 2px 6px;
+        font-size: 12px;
+        font-family: monospace;
+        width: 72px;
+        outline: none;
+      }
+
       /* ── Fisheye slider (hemisphere view only) ────────────────── */
       #hemi-controls {
         display: none;
@@ -242,11 +268,15 @@
       <span   id="history-pos">0 / 0</span>
       <button id="btn-forward" class="btn" disabled>&#8594;</button>
 
-      <!-- Scale -->
-      <input id="scale-slider" type="range" min="0" max="2" step="0.01" value="1" />
-
       <!-- Reload from server -->
       <button id="btn-reload" class="btn">Reload</button>
+
+      <!-- Normalize / saturation point -->
+      <label class="relief-check-label" title="Auto-normalize to max grid value">
+        <input id="normalize-check" type="checkbox" checked />
+        normalize
+      </label>
+      <input id="sat-point" type="number" step="0.0001" value="1" disabled title="Saturation point — value that maps to full brightness / max height" />
 
       <div class="sep"></div>
 
@@ -278,9 +308,34 @@
         <input id="fisheye-y-slider" class="fisheye-slider" type="range" min="0" max="5" step="0.05" value="0" />
         <span id="fisheye-y-val" class="ctrl-val">0.00</span>
       </div>
+
+      <div class="sep"></div>
+
+      <!-- Lines mode toggle — state is per-view -->
+      <label class="relief-check-label" title="Replace mesh with lines from center to each sample">
+        <input id="lines-check" type="checkbox" />
+        lines
+      </label>
+
+      <!-- Relief mode toggle — state is per-view -->
+      <label class="relief-check-label" title="Use matrix values as radial depth">
+        <input id="relief-check" type="checkbox" />
+        relief
+      </label>
+
+      <!-- Relief controls — visible when relief is enabled -->
+      <div id="relief-controls">
+        <div class="sep"></div>
+        <span class="ctrl-label">offset</span>
+        <input id="relief-offset" type="number" step="0.0001" value="0.01" />
+        <span class="ctrl-label">max h</span>
+        <input id="relief-maxh-slider" class="fisheye-slider" type="range" min="0.1" max="5" step="0.1" value="1" />
+        <span id="relief-maxh-val" class="ctrl-val">1.0</span>
+      </div>
     </div>
 
     <canvas id="grid"></canvas>
+    <div id="grid3d-container"></div>
     <div id="hemi-container" style="display:none; width:512px; height:512px;"></div>
     <div id="sphere-wrap">
       <div id="sphere-container"></div>

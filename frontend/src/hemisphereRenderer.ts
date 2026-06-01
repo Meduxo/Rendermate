@@ -28,6 +28,7 @@ export class HemisphereRenderer {
   private webgl: THREE.WebGLRenderer;
   private controls: OrbitControls;
   private mesh: THREE.Mesh | null = null;
+  private linesObj: THREE.LineSegments | null = null;
   private animId: number | null = null;
 
   constructor(container: HTMLElement) {
@@ -51,10 +52,65 @@ export class HemisphereRenderer {
     this.controls.dampingFactor = 0.08;
   }
 
-  render(grid: Grid, scale = 1.0, fisheyeX = 0.0, fisheyeY = 0.0): void {
+  render(grid: Grid, satPoint = 1.0, fisheyeX = 0.0, fisheyeY = 0.0, displace = false, offset = 0.01, maxHeight = 1.0, lines = false): void {
     const rows = grid.length;
     const cols = rows > 0 ? grid[0].length : 0;
     if (rows === 0 || cols === 0) return;
+
+    const sp     = Math.max(1e-6, satPoint);
+    const maxAdj = Math.max(1e-6, sp + offset);
+
+    // Dispose previous objects.
+    if (this.mesh) {
+      const mat = this.mesh.material as THREE.MeshBasicMaterial;
+      mat.map?.dispose();
+      mat.dispose();
+      this.mesh.geometry.dispose();
+      this.scene.remove(this.mesh);
+      this.mesh = null;
+    }
+    if (this.linesObj) {
+      (this.linesObj.material as THREE.LineBasicMaterial).dispose();
+      this.linesObj.geometry.dispose();
+      this.scene.remove(this.linesObj);
+      this.linesObj = null;
+    }
+
+    // Lines mode requires displacement. Use raw equirectangular angles for
+    // directions (no fisheye applied) so each cell maps to its natural position
+    // on the front hemisphere (phi ∈ [0, π]).
+    if (lines && displace) {
+      const posData   = new Float32Array(rows * cols * 6);
+      const colorData = new Float32Array(rows * cols * 6);
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const i     = r * cols + c;
+          const raw   = grid[r][c] ?? 0;
+          const h     = Math.min(1, Math.max(0, (raw + offset) / maxAdj)) * maxHeight;
+          const cv    = Math.min(1, Math.max(0, raw / sp));
+          // Front hemisphere: phi ∈ [0, π], theta ∈ [0, π].
+          const phi   = ((c + 0.5) / cols) * Math.PI;
+          const theta = ((r + 0.5) / rows) * Math.PI;
+          const sx    = -Math.sin(theta) * Math.cos(phi);
+          const sy    =  Math.cos(theta);
+          const sz    =  Math.sin(theta) * Math.sin(phi);
+
+          posData[i * 6]     = 0;      posData[i * 6 + 1] = 0;      posData[i * 6 + 2] = 0;
+          posData[i * 6 + 3] = sx * h; posData[i * 6 + 4] = sy * h; posData[i * 6 + 5] = sz * h;
+          colorData[i * 6]     = cv; colorData[i * 6 + 1] = cv; colorData[i * 6 + 2] = cv;
+          colorData[i * 6 + 3] = cv; colorData[i * 6 + 4] = cv; colorData[i * 6 + 5] = cv;
+        }
+      }
+
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(posData, 3));
+      geo.setAttribute("color",    new THREE.BufferAttribute(colorData, 3));
+      const mat = new THREE.LineBasicMaterial({ vertexColors: true });
+      this.linesObj = new THREE.LineSegments(geo, mat);
+      this.scene.add(this.linesObj);
+      return;
+    }
 
     const colMap = buildMapping(cols, fisheyeX);
     const rowMap = buildMapping(rows, fisheyeY);
@@ -73,7 +129,7 @@ export class HemisphereRenderer {
       const r = rowMap[pr];
       for (let p = 0; p < paddedCols; p++) {
         const raw = p < sampledCols ? (grid[r][colMap[p]] ?? 0) : 0;
-        const v   = Math.round(Math.min(1, Math.max(0, raw * scale)) * 255);
+        const v   = Math.round(Math.min(1, Math.max(0, raw / sp)) * 255);
         const i   = (pr * paddedCols + p) * 4;
         img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
         img.data[i + 3] = 255;
@@ -86,15 +142,38 @@ export class HemisphereRenderer {
     texture.minFilter  = THREE.NearestFilter;
     texture.colorSpace = THREE.SRGBColorSpace;
 
-    if (this.mesh) {
-      const mat = this.mesh.material as THREE.MeshBasicMaterial;
-      mat.map?.dispose();
-      mat.dispose();
-      this.mesh.geometry.dispose();
-      this.scene.remove(this.mesh);
+    const geometry = new THREE.SphereGeometry(1, paddedCols, sampledRows);
+
+    if (displace) {
+      // Height for the zero-padded back hemisphere.
+      const backH = Math.min(1, Math.max(0, offset / maxAdj)) * maxHeight;
+
+      // SphereGeometry(1, paddedCols, sampledRows) has
+      // (paddedCols+1)*(sampledRows+1) vertices.
+      // Vertex at (i, j): index = j*(paddedCols+1) + i.
+      // i < sampledCols → front hemisphere real data (use colMap/rowMap).
+      // i >= sampledCols → back hemisphere zeros (use backH).
+      const pos = geometry.attributes.position as THREE.BufferAttribute;
+      for (let j = 0; j <= sampledRows; j++) {
+        const r = rowMap[Math.min(j, sampledRows - 1)];
+        for (let i = 0; i <= paddedCols; i++) {
+          const vi = j * (paddedCols + 1) + i;
+          let h: number;
+          if (i < sampledCols) {
+            const c = colMap[Math.min(i, sampledCols - 1)];
+            h = Math.min(1, Math.max(0, ((grid[r][c] ?? 0) + offset) / maxAdj)) * maxHeight;
+          } else {
+            h = backH;
+          }
+          const x = pos.getX(vi), y = pos.getY(vi), z = pos.getZ(vi);
+          const len = Math.sqrt(x * x + y * y + z * z);
+          if (len > 1e-6) pos.setXYZ(vi, (x / len) * h, (y / len) * h, (z / len) * h);
+        }
+      }
+      pos.needsUpdate = true;
+      geometry.computeVertexNormals();
     }
 
-    const geometry = new THREE.SphereGeometry(1, paddedCols, sampledRows);
     const material  = new THREE.MeshBasicMaterial({ map: texture });
     this.mesh       = new THREE.Mesh(geometry, material);
     this.scene.add(this.mesh);

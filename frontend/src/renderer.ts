@@ -25,7 +25,7 @@ export const PIXEL_SIZE = 8;
 export function render(
   canvas: HTMLCanvasElement,
   grid: Grid,
-  scale = 1.0,
+  satPoint = 1.0,
 ): void {
   const rows = grid.length;
   const cols = rows > 0 ? grid[0].length : 0;
@@ -39,16 +39,58 @@ export function render(
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Could not acquire 2D canvas context.");
 
+  const sp = Math.max(1e-6, satPoint);
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const raw     = grid[r][c] ?? 0;
-      // Apply scale then clamp to [0, 1].
-      const clamped = Math.min(1, Math.max(0, raw * scale));
-      // Map to [0, 255] grayscale byte.
+      const clamped = Math.min(1, Math.max(0, raw / sp));
       const byte    = Math.round(clamped * 255);
 
       ctx.fillStyle = `rgb(${byte},${byte},${byte})`;
       ctx.fillRect(c * PIXEL_SIZE, r * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+    }
+  }
+}
+
+/**
+ * Render each cell as a bottom-aligned vertical bar sized to its value.
+ * Canvas dimensions match the normal render() layout (cols × rows × PIXEL_SIZE).
+ */
+export function renderBars(
+  canvas: HTMLCanvasElement,
+  grid: Grid,
+  satPoint = 1.0,
+): void {
+  const rows = grid.length;
+  const cols = rows > 0 ? grid[0].length : 0;
+
+  canvas.width  = cols * PIXEL_SIZE;
+  canvas.height = rows * PIXEL_SIZE;
+
+  if (rows === 0 || cols === 0) return;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Could not acquire 2D canvas context.");
+
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const sp = Math.max(1e-6, satPoint);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const raw     = grid[r][c] ?? 0;
+      const clamped = Math.min(1, Math.max(0, raw / sp));
+      const byte    = Math.round(clamped * 255);
+      const barH    = Math.round(clamped * PIXEL_SIZE);
+      if (barH <= 0) continue;
+
+      ctx.fillStyle = `rgb(${byte},${byte},${byte})`;
+      ctx.fillRect(
+        c * PIXEL_SIZE,
+        (r + 1) * PIXEL_SIZE - barH,
+        PIXEL_SIZE,
+        barH,
+      );
     }
   }
 }

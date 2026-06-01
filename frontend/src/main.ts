@@ -12,16 +12,18 @@
  * - Handle local file selection via <input type="file"> and POST /api/grid/upload.
  */
 
-import type { GridPayload } from "@shared/types";
+import type { GridPayload, Grid } from "@shared/types";
 import * as history from "./historyStore";
-import { render, clear } from "./renderer";
+import { render, renderBars, clear } from "./renderer";
 import { SphereRenderer } from "./sphereRenderer";
 import { HemisphereRenderer } from "./hemisphereRenderer";
+import { GridRenderer3D } from "./gridRenderer3D";
 
 // ── DOM references ────────────────────────────────────────────────────────────
 
 const canvas          = document.getElementById("grid")             as HTMLCanvasElement;
-const slider          = document.getElementById("scale-slider")     as HTMLInputElement;
+const normalizeCheck  = document.getElementById("normalize-check")  as HTMLInputElement;
+const satPointInput   = document.getElementById("sat-point")        as HTMLInputElement;
 const btnReload       = document.getElementById("btn-reload")       as HTMLButtonElement;
 const btnBack         = document.getElementById("btn-back")         as HTMLButtonElement;
 const btnForward      = document.getElementById("btn-forward")      as HTMLButtonElement;
@@ -29,18 +31,25 @@ const historyPos      = document.getElementById("history-pos")      as HTMLSpanE
 const statusEl        = document.getElementById("status")           as HTMLDivElement;
 const datasetSelect   = document.getElementById("dataset-select")   as HTMLSelectElement;
 const fileInput       = document.getElementById("file-input")       as HTMLInputElement;
-const sphereWrap      = document.getElementById("sphere-wrap")      as HTMLDivElement;
-const sphereContainer = document.getElementById("sphere-container") as HTMLDivElement;
-const sphereMap       = document.getElementById("sphere-map")       as HTMLCanvasElement;
-const hemiContainer   = document.getElementById("hemi-container")   as HTMLDivElement;
-const hemiControls    = document.getElementById("hemi-controls")     as HTMLDivElement;
-const fisheyeXSlider  = document.getElementById("fisheye-x-slider") as HTMLInputElement;
-const fisheyeYSlider  = document.getElementById("fisheye-y-slider") as HTMLInputElement;
-const fisheyeXVal     = document.getElementById("fisheye-x-val")    as HTMLSpanElement;
-const fisheyeYVal     = document.getElementById("fisheye-y-val")    as HTMLSpanElement;
-const btnViewGrid     = document.getElementById("btn-view-grid")    as HTMLButtonElement;
-const btnViewSphere   = document.getElementById("btn-view-sphere")  as HTMLButtonElement;
-const btnViewHemi     = document.getElementById("btn-view-hemi")    as HTMLButtonElement;
+const sphereWrap        = document.getElementById("sphere-wrap")        as HTMLDivElement;
+const sphereContainer   = document.getElementById("sphere-container")   as HTMLDivElement;
+const sphereMap         = document.getElementById("sphere-map")         as HTMLCanvasElement;
+const hemiContainer     = document.getElementById("hemi-container")     as HTMLDivElement;
+const hemiControls      = document.getElementById("hemi-controls")      as HTMLDivElement;
+const fisheyeXSlider    = document.getElementById("fisheye-x-slider")   as HTMLInputElement;
+const fisheyeYSlider    = document.getElementById("fisheye-y-slider")   as HTMLInputElement;
+const fisheyeXVal       = document.getElementById("fisheye-x-val")      as HTMLSpanElement;
+const fisheyeYVal       = document.getElementById("fisheye-y-val")      as HTMLSpanElement;
+const btnViewGrid       = document.getElementById("btn-view-grid")      as HTMLButtonElement;
+const btnViewSphere     = document.getElementById("btn-view-sphere")    as HTMLButtonElement;
+const btnViewHemi       = document.getElementById("btn-view-hemi")      as HTMLButtonElement;
+const linesCheck        = document.getElementById("lines-check")        as HTMLInputElement;
+const grid3dContainer   = document.getElementById("grid3d-container")   as HTMLDivElement;
+const reliefCheck       = document.getElementById("relief-check")       as HTMLInputElement;
+const reliefControls    = document.getElementById("relief-controls")    as HTMLDivElement;
+const reliefOffset      = document.getElementById("relief-offset")      as HTMLInputElement;
+const reliefMaxhSlider  = document.getElementById("relief-maxh-slider") as HTMLInputElement;
+const reliefMaxhVal     = document.getElementById("relief-maxh-val")    as HTMLSpanElement;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -49,8 +58,8 @@ function setStatus(msg: string, isError = false): void {
   statusEl.className   = isError ? "error" : "";
 }
 
-function currentScale(): number {
-  return parseFloat(slider.value);
+function currentSatPoint(): number {
+  return parseFloat(satPointInput.value);
 }
 
 function currentFisheyeX(): number {
@@ -61,46 +70,83 @@ function currentFisheyeY(): number {
   return parseFloat(fisheyeYSlider.value);
 }
 
+function currentOffset(): number {
+  return parseFloat(reliefOffset.value);
+}
+
+function currentMaxHeight(): number {
+  return parseFloat(reliefMaxhSlider.value);
+}
+
+function currentRelief(): boolean {
+  return viewMode === "grid"   ? reliefState.grid
+       : viewMode === "sphere" ? reliefState.sphere
+       : reliefState.hemi;
+}
+
 // ── View state ────────────────────────────────────────────────────────────────
 
 type ViewMode = "grid" | "sphere" | "hemisphere";
 let viewMode: ViewMode = "grid";
 let sphereRenderer: SphereRenderer | null = null;
 let hemiRenderer: HemisphereRenderer | null = null;
+let gridRenderer3D_: GridRenderer3D | null = null;
+
+const reliefState = { grid: false, sphere: false, hemi: false };
+const linesState  = { grid: false, sphere: false, hemi: false };
+
+function currentLines(): boolean {
+  return viewMode === "grid"   ? linesState.grid
+       : viewMode === "sphere" ? linesState.sphere
+       : linesState.hemi;
+}
 
 function setView(mode: ViewMode): void {
   viewMode = mode;
 
-  // Hide everything, then show only the active view.
-  canvas.style.display           = "none";
-  sphereWrap.style.display       = "none";
-  hemiContainer.style.display    = "none";
-  hemiControls.style.display     = "none";
+  // Hide everything.
+  canvas.style.display             = "none";
+  grid3dContainer.style.display    = "none";
+  sphereWrap.style.display         = "none";
+  hemiContainer.style.display      = "none";
+  hemiControls.style.display       = "none";
   btnViewGrid.classList.remove("btn-active");
   btnViewSphere.classList.remove("btn-active");
   btnViewHemi.classList.remove("btn-active");
 
+  // Sync relief and lines controls to this view's state.
+  const disp = currentRelief();
+  reliefCheck.checked            = disp;
+  reliefControls.style.display   = disp ? "flex" : "none";
+
+  linesCheck.checked = currentLines();
+
   if (mode === "grid") {
-    canvas.style.display = "block";
     btnViewGrid.classList.add("btn-active");
     sphereRenderer?.stop();
     hemiRenderer?.stop();
+    if (disp) {
+      grid3dContainer.style.display = "block";
+      if (!gridRenderer3D_) gridRenderer3D_ = new GridRenderer3D(grid3dContainer);
+      gridRenderer3D_.start();
+    } else {
+      canvas.style.display = "block";
+      gridRenderer3D_?.stop();
+    }
   } else if (mode === "sphere") {
     sphereWrap.style.display = "flex";
     btnViewSphere.classList.add("btn-active");
     hemiRenderer?.stop();
-    if (!sphereRenderer) {
-      sphereRenderer = new SphereRenderer(sphereContainer, sphereMap);
-    }
+    gridRenderer3D_?.stop();
+    if (!sphereRenderer) sphereRenderer = new SphereRenderer(sphereContainer, sphereMap);
     sphereRenderer.start();
   } else {
     hemiContainer.style.display = "block";
     hemiControls.style.display  = "flex";
     btnViewHemi.classList.add("btn-active");
     sphereRenderer?.stop();
-    if (!hemiRenderer) {
-      hemiRenderer = new HemisphereRenderer(hemiContainer);
-    }
+    gridRenderer3D_?.stop();
+    if (!hemiRenderer) hemiRenderer = new HemisphereRenderer(hemiContainer);
     hemiRenderer.start();
   }
 
@@ -119,12 +165,21 @@ function renderCurrent(): void {
     clear(canvas);
     return;
   }
+  const disp  = currentRelief();
+  const lns   = currentLines();
+  const off   = currentOffset();
+  const maxH  = currentMaxHeight();
   if (viewMode === "grid") {
-    render(canvas, entry.payload.grid, currentScale());
+    if (disp) {
+      gridRenderer3D_?.render(entry.payload.grid, currentSatPoint(), off, maxH, lns);
+    } else {
+      if (lns) renderBars(canvas, entry.payload.grid, currentSatPoint());
+      else     render(canvas, entry.payload.grid, currentSatPoint());
+    }
   } else if (viewMode === "sphere") {
-    sphereRenderer?.render(entry.payload.grid, currentScale());
+    sphereRenderer?.render(entry.payload.grid, currentSatPoint(), disp, off, maxH, lns);
   } else {
-    hemiRenderer?.render(entry.payload.grid, currentScale(), currentFisheyeX(), currentFisheyeY());
+    hemiRenderer?.render(entry.payload.grid, currentSatPoint(), currentFisheyeX(), currentFisheyeY(), disp, off, maxH, lns);
   }
 }
 
@@ -140,6 +195,21 @@ history.subscribe((state) => {
 
   renderCurrent();
 });
+
+// ── Relief offset auto-compute ────────────────────────────────────────────────
+
+function applySatPoint(grid: Grid): void {
+  let max = -Infinity;
+  for (const row of grid) for (const v of row) if (v > max) max = v;
+  satPointInput.value = (max > 0 ? max : 1).toFixed(4);
+}
+
+function applyDefaultOffset(grid: Grid): void {
+  let min = Infinity;
+  for (const row of grid) for (const v of row) if (v < min) min = v;
+  reliefOffset.value = (0.01 - min).toFixed(4);
+  if (normalizeCheck.checked) applySatPoint(grid);
+}
 
 // ── Data fetching ─────────────────────────────────────────────────────────────
 
@@ -172,6 +242,7 @@ async function loadGrid(): Promise<void> {
     }
 
     history.push(payload);
+    applyDefaultOffset(payload.grid);
     setStatus(payload.meta?.label ? `Loaded: ${payload.meta.label}` : "");
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -202,6 +273,7 @@ async function loadNamedDataset(name: string): Promise<void> {
     }
 
     history.push(payload);
+    applyDefaultOffset(payload.grid);
     setStatus(payload.meta?.label ? `Loaded: ${payload.meta.label}` : `Loaded: ${name}`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -305,14 +377,64 @@ fisheyeYSlider.addEventListener("input", () => {
   renderCurrent();
 });
 
-// Scale slider — re-render without fetching.
-slider.addEventListener("input", () => {
+// Lines button — per-view toggle.
+linesCheck.addEventListener("change", () => {
+  const on = linesCheck.checked;
+  if (viewMode === "grid")        linesState.grid   = on;
+  else if (viewMode === "sphere") linesState.sphere = on;
+  else                            linesState.hemi   = on;
+
   renderCurrent();
 });
 
-// Reload — fetch fresh data from the server, reset scale to 1.
+// Relief checkbox — toggle per-view state; swap canvas ↔ 3D container for grid.
+reliefCheck.addEventListener("change", () => {
+  const on = reliefCheck.checked;
+  if (viewMode === "grid")        reliefState.grid   = on;
+  else if (viewMode === "sphere") reliefState.sphere = on;
+  else                            reliefState.hemi   = on;
+
+  reliefControls.style.display = on ? "flex" : "none";
+
+  if (viewMode === "grid") {
+    if (on) {
+      canvas.style.display          = "none";
+      grid3dContainer.style.display = "block";
+      if (!gridRenderer3D_) gridRenderer3D_ = new GridRenderer3D(grid3dContainer);
+      gridRenderer3D_.start();
+    } else {
+      grid3dContainer.style.display = "none";
+      gridRenderer3D_?.stop();
+      canvas.style.display = "block";
+    }
+  }
+  renderCurrent();
+});
+
+// Relief offset — re-render on change.
+reliefOffset.addEventListener("input", () => { renderCurrent(); });
+
+// Relief max-height slider.
+reliefMaxhSlider.addEventListener("input", () => {
+  reliefMaxhVal.textContent = currentMaxHeight().toFixed(1);
+  renderCurrent();
+});
+
+// Normalize checkbox — auto-sets saturation point when checked.
+normalizeCheck.addEventListener("change", () => {
+  satPointInput.disabled = normalizeCheck.checked;
+  if (normalizeCheck.checked) {
+    const entry = history.current();
+    if (entry) applySatPoint(entry.payload.grid);
+  }
+  renderCurrent();
+});
+
+// Saturation point — re-render on manual edit.
+satPointInput.addEventListener("input", () => { renderCurrent(); });
+
+// Reload — fetch fresh data from the server.
 btnReload.addEventListener("click", () => {
-  slider.value = "1";
   void loadGrid();
 });
 
@@ -333,7 +455,6 @@ datasetSelect.addEventListener("change", () => {
   if (!name) return;
   // Reset to placeholder so the same item can be re-selected later.
   datasetSelect.value = "";
-  slider.value = "1";
   void loadNamedDataset(name);
 });
 
@@ -341,7 +462,6 @@ datasetSelect.addEventListener("change", () => {
 fileInput.addEventListener("change", () => {
   const file = fileInput.files?.[0];
   if (!file) return;
-  slider.value = "1";
   void handleFileUpload(file);
 });
 
