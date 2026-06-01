@@ -138,6 +138,47 @@
         image-rendering: crisp-edges;
       }
 
+      /* ── Sphere wrap ──────────────────────────────────────────── */
+      #sphere-wrap {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+      }
+      #sphere-container {
+        width: 512px;
+        height: 512px;
+      }
+      #sphere-container canvas {
+        display: block;
+      }
+
+      /* ── Coverage map ─────────────────────────────────────────── */
+      #map-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+      }
+      .map-label {
+        color: #555;
+        font-size: 11px;
+        letter-spacing: 0.05em;
+      }
+      #sphere-map {
+        display: block;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+        border: 1px solid #2a2a2a;
+      }
+
+      /* ── Active view button ───────────────────────────────────── */
+      .btn-active {
+        background: #444;
+        color: #fff;
+        border-color: #888;
+      }
+
       /* ── Status / error message ───────────────────────────────── */
       #status {
         color: #888;
@@ -174,9 +215,22 @@
         Open file…
         <input id="file-input" type="file" accept=".json,application/json" />
       </label>
+
+      <div class="sep"></div>
+
+      <!-- View toggle -->
+      <button id="btn-view-grid"   class="btn btn-active" title="Flat grid view">Grid</button>
+      <button id="btn-view-sphere" class="btn"             title="Sphere view">Sphere</button>
     </div>
 
     <canvas id="grid"></canvas>
+    <div id="sphere-wrap">
+      <div id="sphere-container"></div>
+      <div id="map-wrap">
+        <span class="map-label">coverage map</span>
+        <canvas id="sphere-map"></canvas>
+      </div>
+    </div>
     <div id="status"></div>
 
     <!-- Vite resolves this TypeScript entry point at build time -->

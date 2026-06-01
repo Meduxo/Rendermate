@@ -15,18 +15,24 @@
 import type { GridPayload } from "@shared/types";
 import * as history from "./historyStore";
 import { render, clear } from "./renderer";
+import { SphereRenderer } from "./sphereRenderer";
 
 // ── DOM references ────────────────────────────────────────────────────────────
 
-const canvas        = document.getElementById("grid")           as HTMLCanvasElement;
-const slider        = document.getElementById("scale-slider")   as HTMLInputElement;
-const btnReload     = document.getElementById("btn-reload")     as HTMLButtonElement;
-const btnBack       = document.getElementById("btn-back")       as HTMLButtonElement;
-const btnForward    = document.getElementById("btn-forward")    as HTMLButtonElement;
-const historyPos    = document.getElementById("history-pos")    as HTMLSpanElement;
-const statusEl      = document.getElementById("status")         as HTMLDivElement;
-const datasetSelect = document.getElementById("dataset-select") as HTMLSelectElement;
-const fileInput     = document.getElementById("file-input")     as HTMLInputElement;
+const canvas          = document.getElementById("grid")             as HTMLCanvasElement;
+const slider          = document.getElementById("scale-slider")     as HTMLInputElement;
+const btnReload       = document.getElementById("btn-reload")       as HTMLButtonElement;
+const btnBack         = document.getElementById("btn-back")         as HTMLButtonElement;
+const btnForward      = document.getElementById("btn-forward")      as HTMLButtonElement;
+const historyPos      = document.getElementById("history-pos")      as HTMLSpanElement;
+const statusEl        = document.getElementById("status")           as HTMLDivElement;
+const datasetSelect   = document.getElementById("dataset-select")   as HTMLSelectElement;
+const fileInput       = document.getElementById("file-input")       as HTMLInputElement;
+const sphereWrap      = document.getElementById("sphere-wrap")      as HTMLDivElement;
+const sphereContainer = document.getElementById("sphere-container") as HTMLDivElement;
+const sphereMap       = document.getElementById("sphere-map")       as HTMLCanvasElement;
+const btnViewGrid     = document.getElementById("btn-view-grid")    as HTMLButtonElement;
+const btnViewSphere   = document.getElementById("btn-view-sphere")  as HTMLButtonElement;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -39,10 +45,39 @@ function currentScale(): number {
   return parseFloat(slider.value);
 }
 
+// ── View state ────────────────────────────────────────────────────────────────
+
+type ViewMode = "grid" | "sphere";
+let viewMode: ViewMode = "grid";
+let sphereRenderer: SphereRenderer | null = null;
+
+function setView(mode: ViewMode): void {
+  viewMode = mode;
+
+  if (mode === "grid") {
+    canvas.style.display         = "block";
+    sphereWrap.style.display     = "none";
+    btnViewGrid.classList.add("btn-active");
+    btnViewSphere.classList.remove("btn-active");
+    sphereRenderer?.stop();
+  } else {
+    canvas.style.display         = "none";
+    sphereWrap.style.display     = "flex";
+    btnViewGrid.classList.remove("btn-active");
+    btnViewSphere.classList.add("btn-active");
+    if (!sphereRenderer) {
+      sphereRenderer = new SphereRenderer(sphereContainer, sphereMap);
+    }
+    sphereRenderer.start();
+  }
+
+  renderCurrent();
+}
+
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
 /**
- * Re-render the canvas from the current history entry and current scale.
+ * Re-render the active view from the current history entry and scale.
  * Called whenever the history cursor moves OR the slider changes.
  */
 function renderCurrent(): void {
@@ -51,7 +86,11 @@ function renderCurrent(): void {
     clear(canvas);
     return;
   }
-  render(canvas, entry.payload.grid, currentScale());
+  if (viewMode === "grid") {
+    render(canvas, entry.payload.grid, currentScale());
+  } else {
+    sphereRenderer?.render(entry.payload.grid, currentScale());
+  }
 }
 
 // ── History subscription ──────────────────────────────────────────────────────
@@ -216,6 +255,9 @@ async function handleFileUpload(file: File): Promise<void> {
 }
 
 // ── Event listeners ───────────────────────────────────────────────────────────
+
+btnViewGrid.addEventListener("click", () => setView("grid"));
+btnViewSphere.addEventListener("click", () => setView("sphere"));
 
 // Scale slider — re-render without fetching.
 slider.addEventListener("input", () => {
