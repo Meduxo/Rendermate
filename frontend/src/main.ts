@@ -16,6 +16,7 @@ import type { GridPayload } from "@shared/types";
 import * as history from "./historyStore";
 import { render, clear } from "./renderer";
 import { SphereRenderer } from "./sphereRenderer";
+import { HemisphereRenderer } from "./hemisphereRenderer";
 
 // ── DOM references ────────────────────────────────────────────────────────────
 
@@ -31,8 +32,15 @@ const fileInput       = document.getElementById("file-input")       as HTMLInput
 const sphereWrap      = document.getElementById("sphere-wrap")      as HTMLDivElement;
 const sphereContainer = document.getElementById("sphere-container") as HTMLDivElement;
 const sphereMap       = document.getElementById("sphere-map")       as HTMLCanvasElement;
+const hemiContainer   = document.getElementById("hemi-container")   as HTMLDivElement;
+const hemiControls    = document.getElementById("hemi-controls")     as HTMLDivElement;
+const fisheyeXSlider  = document.getElementById("fisheye-x-slider") as HTMLInputElement;
+const fisheyeYSlider  = document.getElementById("fisheye-y-slider") as HTMLInputElement;
+const fisheyeXVal     = document.getElementById("fisheye-x-val")    as HTMLSpanElement;
+const fisheyeYVal     = document.getElementById("fisheye-y-val")    as HTMLSpanElement;
 const btnViewGrid     = document.getElementById("btn-view-grid")    as HTMLButtonElement;
 const btnViewSphere   = document.getElementById("btn-view-sphere")  as HTMLButtonElement;
+const btnViewHemi     = document.getElementById("btn-view-hemi")    as HTMLButtonElement;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -45,30 +53,55 @@ function currentScale(): number {
   return parseFloat(slider.value);
 }
 
+function currentFisheyeX(): number {
+  return parseFloat(fisheyeXSlider.value);
+}
+
+function currentFisheyeY(): number {
+  return parseFloat(fisheyeYSlider.value);
+}
+
 // ── View state ────────────────────────────────────────────────────────────────
 
-type ViewMode = "grid" | "sphere";
+type ViewMode = "grid" | "sphere" | "hemisphere";
 let viewMode: ViewMode = "grid";
 let sphereRenderer: SphereRenderer | null = null;
+let hemiRenderer: HemisphereRenderer | null = null;
 
 function setView(mode: ViewMode): void {
   viewMode = mode;
 
+  // Hide everything, then show only the active view.
+  canvas.style.display           = "none";
+  sphereWrap.style.display       = "none";
+  hemiContainer.style.display    = "none";
+  hemiControls.style.display     = "none";
+  btnViewGrid.classList.remove("btn-active");
+  btnViewSphere.classList.remove("btn-active");
+  btnViewHemi.classList.remove("btn-active");
+
   if (mode === "grid") {
-    canvas.style.display         = "block";
-    sphereWrap.style.display     = "none";
+    canvas.style.display = "block";
     btnViewGrid.classList.add("btn-active");
-    btnViewSphere.classList.remove("btn-active");
     sphereRenderer?.stop();
-  } else {
-    canvas.style.display         = "none";
-    sphereWrap.style.display     = "flex";
-    btnViewGrid.classList.remove("btn-active");
+    hemiRenderer?.stop();
+  } else if (mode === "sphere") {
+    sphereWrap.style.display = "flex";
     btnViewSphere.classList.add("btn-active");
+    hemiRenderer?.stop();
     if (!sphereRenderer) {
       sphereRenderer = new SphereRenderer(sphereContainer, sphereMap);
     }
     sphereRenderer.start();
+  } else {
+    hemiContainer.style.display = "block";
+    hemiControls.style.display  = "flex";
+    btnViewHemi.classList.add("btn-active");
+    sphereRenderer?.stop();
+    if (!hemiRenderer) {
+      hemiRenderer = new HemisphereRenderer(hemiContainer);
+    }
+    hemiRenderer.start();
   }
 
   renderCurrent();
@@ -88,8 +121,10 @@ function renderCurrent(): void {
   }
   if (viewMode === "grid") {
     render(canvas, entry.payload.grid, currentScale());
-  } else {
+  } else if (viewMode === "sphere") {
     sphereRenderer?.render(entry.payload.grid, currentScale());
+  } else {
+    hemiRenderer?.render(entry.payload.grid, currentScale(), currentFisheyeX(), currentFisheyeY());
   }
 }
 
@@ -256,8 +291,19 @@ async function handleFileUpload(file: File): Promise<void> {
 
 // ── Event listeners ───────────────────────────────────────────────────────────
 
-btnViewGrid.addEventListener("click", () => setView("grid"));
+btnViewGrid.addEventListener("click",   () => setView("grid"));
 btnViewSphere.addEventListener("click", () => setView("sphere"));
+btnViewHemi.addEventListener("click",   () => setView("hemisphere"));
+
+// Lens sliders — re-render hemisphere without re-fetching.
+fisheyeXSlider.addEventListener("input", () => {
+  fisheyeXVal.textContent = currentFisheyeX().toFixed(2);
+  renderCurrent();
+});
+fisheyeYSlider.addEventListener("input", () => {
+  fisheyeYVal.textContent = currentFisheyeY().toFixed(2);
+  renderCurrent();
+});
 
 // Scale slider — re-render without fetching.
 slider.addEventListener("input", () => {
