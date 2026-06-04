@@ -11,9 +11,9 @@ export default defineConfig({
     dts({
       entryRoot: "src",
       outDir: libOut,
-      include: ["src/index.ts", "src/renderer.ts", "src/sphereRenderer.ts",
-                "src/hemisphereRenderer.ts", "src/gridRenderer3D.ts",
-                "../shared/types.ts"],
+      include: ["src/index.ts", "src/lib-types.ts", "src/renderer.ts",
+                "src/sphereRenderer.ts", "src/hemisphereRenderer.ts",
+                "src/gridRenderer3D.ts"],
       rollupTypes: true,
     }),
   ],

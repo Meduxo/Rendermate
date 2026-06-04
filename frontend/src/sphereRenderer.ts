@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import type { Grid } from "@shared/types";
+import type { Grid } from "./lib-types";
 
 const MAP_CELL = 4; // px per grid cell in the coverage map
 

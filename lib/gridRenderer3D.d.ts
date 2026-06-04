@@ -1,4 +1,4 @@
-import { Grid } from '../../shared/types';
+import { Grid } from './lib-types';
 export declare class GridRenderer3D {
     private scene;
     private camera;

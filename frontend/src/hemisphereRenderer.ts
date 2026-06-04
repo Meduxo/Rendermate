@@ -16,7 +16,7 @@
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import type { Grid } from "@shared/types";
+import type { Grid } from "./lib-types";
 
 // Texture slots per data column/row at fisheye=0.
 // Determines minimum cell size: 1/OVERSAMPLE of default at max fisheye.

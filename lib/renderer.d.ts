@@ -1,4 +1,4 @@
-import { Grid } from '../../shared/types';
+import { Grid } from './lib-types';
 /** Size of each grid cell in CSS/physical pixels. */
 export declare const PIXEL_SIZE = 8;
 /**
