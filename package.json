@@ -1,0 +1,20 @@
+{
+  "name": "rendermate",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "2D float grid visualizer — flat, sphere, hemisphere, and 3D relief renderers",
+  "exports": {
+    ".": {
+      "import": "./lib/rendermate.js",
+      "types": "./lib/index.d.ts"
+    }
+  },
+  "types": "./lib/index.d.ts",
+  "files": ["lib"],
+  "peerDependencies": {
+    "three": ">=0.140.0"
+  },
+  "scripts": {
+    "build:lib": "cd frontend && bun run build:lib"
+  }
+}

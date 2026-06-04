@@ -6,13 +6,15 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:lib": "tsc --noEmit && vite build --config vite.lib.config.ts",
     "preview": "vite preview"
   },
   "devDependencies": {
     "@types/node": "^20.12.12",
     "@types/three": "^0.184.1",
     "typescript": "^5.4.5",
-    "vite": "^5.2.11"
+    "vite": "^5.2.11",
+    "vite-plugin-dts": "^5.0.2"
   },
   "dependencies": {
     "three": "^0.184.0"
