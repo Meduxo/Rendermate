@@ -1,19 +1,20 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-const MAP_CELL = 4; // px per grid cell in the coverage map
+const MAP_CELL = 4; // px per cell in coverage map
+const DUAL_OFFSET = 1.5; // world-space X offset per slot
 export class SphereRenderer {
     constructor(container, mapCanvas) {
         this.mapCanvas = mapCanvas;
-        this.mesh = null;
-        this.linesObj = null;
+        this.meshes = [null, null];
+        this.linesObjs = [null, null];
+        this.lastGrids = [null, null];
+        this.lastSatPoints = [1.0, 1.0];
         this.animId = null;
-        this.lastGrid = null;
-        this.lastSatPoint = 1.0;
         this.scene = new THREE.Scene();
         const w = container.clientWidth;
         const h = container.clientHeight;
         this.camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
-        this.camera.position.z = 2.5;
+        this.camera.position.z = 4.5; // pulled back to see both spheres
         this.webgl = new THREE.WebGLRenderer({ antialias: false, alpha: true });
         this.webgl.setPixelRatio(window.devicePixelRatio);
         this.webgl.setSize(w, h);
@@ -23,32 +24,33 @@ export class SphereRenderer {
         this.controls.enablePan = false;
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.08;
+        this.controls.target.set(0, 0, 0);
     }
-    render(grid, satPoint = 1.0, displace = false, offset = 0.01, maxHeight = 1.0, lines = false) {
+    render(slot, grid, satPoint = 1.0, displace = false, offset = 0.01, maxHeight = 1.0, lines = false) {
         const rows = grid.length;
         const cols = rows > 0 ? grid[0].length : 0;
         if (rows === 0 || cols === 0)
             return;
-        this.lastGrid = grid;
-        this.lastSatPoint = satPoint;
+        this.lastGrids[slot] = grid;
+        this.lastSatPoints[slot] = satPoint;
         const sp = Math.max(1e-6, satPoint);
         const maxAdj = Math.max(1e-6, sp + offset);
-        // Dispose previous objects.
-        if (this.mesh) {
-            const mat = this.mesh.material;
+        const xPos = slot === 0 ? -DUAL_OFFSET : DUAL_OFFSET;
+        // Dispose this slot's previous objects.
+        if (this.meshes[slot]) {
+            const mat = this.meshes[slot].material;
             mat.map?.dispose();
             mat.dispose();
-            this.mesh.geometry.dispose();
-            this.scene.remove(this.mesh);
-            this.mesh = null;
+            this.meshes[slot].geometry.dispose();
+            this.scene.remove(this.meshes[slot]);
+            this.meshes[slot] = null;
         }
-        if (this.linesObj) {
-            this.linesObj.material.dispose();
-            this.linesObj.geometry.dispose();
-            this.scene.remove(this.linesObj);
-            this.linesObj = null;
+        if (this.linesObjs[slot]) {
+            this.linesObjs[slot].material.dispose();
+            this.linesObjs[slot].geometry.dispose();
+            this.scene.remove(this.linesObjs[slot]);
+            this.linesObjs[slot] = null;
         }
-        // Lines mode requires displacement to be meaningful.
         if (lines && displace) {
             const posData = new Float32Array(rows * cols * 6);
             const colorData = new Float32Array(rows * cols * 6);
@@ -82,14 +84,14 @@ export class SphereRenderer {
             const geo = new THREE.BufferGeometry();
             geo.setAttribute("position", new THREE.BufferAttribute(posData, 3));
             geo.setAttribute("color", new THREE.BufferAttribute(colorData, 3));
-            const mat = new THREE.LineBasicMaterial({ vertexColors: true });
-            this.linesObj = new THREE.LineSegments(geo, mat);
-            this.scene.add(this.linesObj);
+            const obj = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors: true }));
+            obj.position.x = xPos;
+            this.linesObjs[slot] = obj;
+            this.scene.add(obj);
             this.updateMap();
             return;
         }
         // Mesh path ────────────────────────────────────────────────────────────────
-        // One pixel per cell. NearestFilter preserves sharp discrete faces.
         const offscreen = document.createElement("canvas");
         offscreen.width = cols;
         offscreen.height = rows;
@@ -109,19 +111,15 @@ export class SphereRenderer {
         texture.magFilter = THREE.NearestFilter;
         texture.minFilter = THREE.NearestFilter;
         texture.colorSpace = THREE.SRGBColorSpace;
-        // widthSegments=cols, heightSegments=rows → one face per grid cell.
         const geometry = new THREE.SphereGeometry(1, cols, rows);
         if (displace) {
-            // SphereGeometry(1, cols, rows) has (cols+1)*(rows+1) vertices.
-            // Vertex at grid position (j, i): index = j*(cols+1) + i.
-            // i wraps at the seam: column = i % cols.
             const pos = geometry.attributes.position;
             for (let j = 0; j <= rows; j++) {
                 const r = Math.min(j, rows - 1);
                 for (let i = 0; i <= cols; i++) {
                     const vi = j * (cols + 1) + i;
-                    const c = i % cols;
-                    const h = Math.min(1, Math.max(0, ((grid[r][c] ?? 0) + offset) / maxAdj)) * maxHeight;
+                    const cc = i % cols;
+                    const h = Math.min(1, Math.max(0, ((grid[r][cc] ?? 0) + offset) / maxAdj)) * maxHeight;
                     const x = pos.getX(vi), y = pos.getY(vi), z = pos.getZ(vi);
                     const len = Math.sqrt(x * x + y * y + z * z);
                     if (len > 1e-6)
@@ -131,28 +129,22 @@ export class SphereRenderer {
             pos.needsUpdate = true;
             geometry.computeVertexNormals();
         }
-        const material = new THREE.MeshBasicMaterial({ map: texture });
-        this.mesh = new THREE.Mesh(geometry, material);
-        this.scene.add(this.mesh);
+        const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ map: texture }));
+        mesh.position.x = xPos;
+        this.meshes[slot] = mesh;
+        this.scene.add(mesh);
         this.updateMap();
     }
-    // Redraws the coverage map canvas every frame.
-    // Each cell is shown at full brightness if it faces the camera, dimmed if hidden.
-    // Three.js SphereGeometry vertex formula (defaults: phiStart=0, thetaStart=0):
-    //   x = -sin(theta) * cos(phi)
-    //   y =  cos(theta)
-    //   z =  sin(theta) * sin(phi)
-    // where phi = u*2π, theta = v*π, u = col/cols, v = row/rows.
+    // Coverage map tracks slot 0 only.
     updateMap() {
-        const grid = this.lastGrid;
+        const grid = this.lastGrids[0];
         if (!grid)
             return;
         const rows = grid.length;
         const cols = rows > 0 ? grid[0].length : 0;
         if (rows === 0 || cols === 0)
             return;
-        const mapW = cols * MAP_CELL;
-        const mapH = rows * MAP_CELL;
+        const mapW = cols * MAP_CELL, mapH = rows * MAP_CELL;
         if (this.mapCanvas.width !== mapW || this.mapCanvas.height !== mapH) {
             this.mapCanvas.width = mapW;
             this.mapCanvas.height = mapH;
@@ -160,25 +152,22 @@ export class SphereRenderer {
         const ctx = this.mapCanvas.getContext("2d");
         if (!ctx)
             return;
-        // Camera view direction toward the sphere center (origin).
+        // Direction from camera toward slot-0 sphere center.
         const cam = this.camera.position;
-        const len = cam.length();
-        const dx = -cam.x / len;
-        const dy = -cam.y / len;
-        const dz = -cam.z / len;
+        const tx = -DUAL_OFFSET - cam.x, ty = -cam.y, tz = -cam.z;
+        const tLen = Math.sqrt(tx * tx + ty * ty + tz * tz);
+        const dx = tx / tLen, dy = ty / tLen, dz = tz / tLen;
+        const sp = Math.max(1e-6, this.lastSatPoints[0]);
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
-                const u = (c + 0.5) / cols;
-                const v = (r + 0.5) / rows;
-                const phi = 2 * Math.PI * u;
-                const theta = Math.PI * v;
+                const u = (c + 0.5) / cols, v = (r + 0.5) / rows;
+                const phi = 2 * Math.PI * u, theta = Math.PI * v;
                 const sx = -Math.sin(theta) * Math.cos(phi);
                 const sy = Math.cos(theta);
                 const sz = Math.sin(theta) * Math.sin(phi);
-                // Positive dot product → cell faces the camera (visible).
                 const vis = sx * dx + sy * dy + sz * dz;
                 const raw = grid[r][c] ?? 0;
-                const clamped = Math.min(1, Math.max(0, raw / Math.max(1e-6, this.lastSatPoint)));
+                const clamped = Math.min(1, Math.max(0, raw / sp));
                 const base = Math.round(clamped * 255);
                 const byte = vis > 0 ? base : Math.round(base * 0.2);
                 ctx.fillStyle = `rgb(${byte},${byte},${byte})`;
@@ -203,6 +192,18 @@ export class SphereRenderer {
     }
     dispose() {
         this.stop();
+        for (let s = 0; s < 2; s++) {
+            const slot = s;
+            if (this.meshes[slot]) {
+                this.meshes[slot].material.map?.dispose();
+                this.meshes[slot].material.dispose();
+                this.meshes[slot].geometry.dispose();
+            }
+            if (this.linesObjs[slot]) {
+                this.linesObjs[slot].material.dispose();
+                this.linesObjs[slot].geometry.dispose();
+            }
+        }
         this.controls.dispose();
         this.webgl.dispose();
         this.webgl.domElement.remove();

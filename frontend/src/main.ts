@@ -1,55 +1,44 @@
-/**
- * frontend/src/main.ts
- *
- * Application entry point.
- *
- * Responsibilities:
- * - Fetch grid data from the backend API.
- * - Push fetched data into the history store.
- * - Subscribe to history state changes and re-render accordingly.
- * - Wire up the scale slider, reload button, and history navigation buttons.
- * - Populate the built-in dataset <select> from GET /api/grid/list.
- * - Handle local file selection via <input type="file"> and POST /api/grid/upload.
- */
-
-import type { GridPayload, Grid } from "@shared/types";
-import * as history from "./historyStore";
-import { render, renderBars, clear } from "./renderer";
+import type { GridPayload } from "@shared/types";
+import { HistoryStore } from "./historyStore";
 import { SphereRenderer } from "./sphereRenderer";
 import { HemisphereRenderer } from "./hemisphereRenderer";
 import { GridRenderer3D } from "./gridRenderer3D";
 
-// ── DOM references ────────────────────────────────────────────────────────────
+// ── DOM refs — per-slot arrays (index 0 = Object A, index 1 = Object B) ──────
 
-const canvas          = document.getElementById("grid")             as HTMLCanvasElement;
-const normalizeCheck  = document.getElementById("normalize-check")  as HTMLInputElement;
-const satPointInput   = document.getElementById("sat-point")        as HTMLInputElement;
-const btnReload       = document.getElementById("btn-reload")       as HTMLButtonElement;
-const btnBack         = document.getElementById("btn-back")         as HTMLButtonElement;
-const btnForward      = document.getElementById("btn-forward")      as HTMLButtonElement;
-const historyPos      = document.getElementById("history-pos")      as HTMLSpanElement;
-const statusEl        = document.getElementById("status")           as HTMLDivElement;
-const datasetSelect   = document.getElementById("dataset-select")   as HTMLSelectElement;
-const fileInput       = document.getElementById("file-input")       as HTMLInputElement;
-const sphereWrap        = document.getElementById("sphere-wrap")        as HTMLDivElement;
-const sphereContainer   = document.getElementById("sphere-container")   as HTMLDivElement;
-const sphereMap         = document.getElementById("sphere-map")         as HTMLCanvasElement;
-const hemiContainer     = document.getElementById("hemi-container")     as HTMLDivElement;
-const hemiControls      = document.getElementById("hemi-controls")      as HTMLDivElement;
-const fisheyeXSlider    = document.getElementById("fisheye-x-slider")   as HTMLInputElement;
-const fisheyeYSlider    = document.getElementById("fisheye-y-slider")   as HTMLInputElement;
-const fisheyeXVal       = document.getElementById("fisheye-x-val")      as HTMLSpanElement;
-const fisheyeYVal       = document.getElementById("fisheye-y-val")      as HTMLSpanElement;
-const btnViewGrid       = document.getElementById("btn-view-grid")      as HTMLButtonElement;
-const btnViewSphere     = document.getElementById("btn-view-sphere")    as HTMLButtonElement;
-const btnViewHemi       = document.getElementById("btn-view-hemi")      as HTMLButtonElement;
-const linesCheck        = document.getElementById("lines-check")        as HTMLInputElement;
-const grid3dContainer   = document.getElementById("grid3d-container")   as HTMLDivElement;
-const reliefCheck       = document.getElementById("relief-check")       as HTMLInputElement;
-const reliefControls    = document.getElementById("relief-controls")    as HTMLDivElement;
-const reliefOffset      = document.getElementById("relief-offset")      as HTMLInputElement;
-const reliefMaxhSlider  = document.getElementById("relief-maxh-slider") as HTMLInputElement;
-const reliefMaxhVal     = document.getElementById("relief-maxh-val")    as HTMLSpanElement;
+const g = (id: string) => document.getElementById(id)!;
+
+const btnBack         = [g("btn-back-1"),          g("btn-back-2")]          as HTMLButtonElement[];
+const historyPos      = [g("history-pos-1"),        g("history-pos-2")]       as HTMLSpanElement[];
+const btnForward      = [g("btn-forward-1"),        g("btn-forward-2")]       as HTMLButtonElement[];
+const btnReload       = [g("btn-reload-1"),         g("btn-reload-2")]        as HTMLButtonElement[];
+const normalizeChecks = [g("normalize-check-1"),    g("normalize-check-2")]   as HTMLInputElement[];
+const satPoints       = [g("sat-point-1"),          g("sat-point-2")]         as HTMLInputElement[];
+const datasetSelects  = [g("dataset-select-1"),     g("dataset-select-2")]    as HTMLSelectElement[];
+const fileInputs      = [g("file-input-1"),         g("file-input-2")]        as HTMLInputElement[];
+const linesChecks     = [g("lines-check-1"),        g("lines-check-2")]       as HTMLInputElement[];
+const reliefChecks    = [g("relief-check-1"),       g("relief-check-2")]      as HTMLInputElement[];
+const reliefDivs      = [g("relief-controls-1"),    g("relief-controls-2")]   as HTMLDivElement[];
+const reliefOffsets   = [g("relief-offset-1"),      g("relief-offset-2")]     as HTMLInputElement[];
+const reliefMaxhSliders = [g("relief-maxh-slider-1"), g("relief-maxh-slider-2")] as HTMLInputElement[];
+const reliefMaxhVals  = [g("relief-maxh-val-1"),    g("relief-maxh-val-2")]   as HTMLSpanElement[];
+const hemiDivs        = [g("hemi-controls-1"),      g("hemi-controls-2")]     as HTMLDivElement[];
+const fisheyeXSliders = [g("fisheye-x-slider-1"),   g("fisheye-x-slider-2")]  as HTMLInputElement[];
+const fisheyeYSliders = [g("fisheye-y-slider-1"),   g("fisheye-y-slider-2")]  as HTMLInputElement[];
+const fisheyeXVals    = [g("fisheye-x-val-1"),      g("fisheye-x-val-2")]     as HTMLSpanElement[];
+const fisheyeYVals    = [g("fisheye-y-val-1"),      g("fisheye-y-val-2")]     as HTMLSpanElement[];
+
+// ── Shared DOM refs ───────────────────────────────────────────────────────────
+
+const statusEl        = g("status")           as HTMLDivElement;
+const grid3dContainer = g("grid3d-container") as HTMLDivElement;
+const hemiContainer   = g("hemi-container")   as HTMLDivElement;
+const sphereWrap      = g("sphere-wrap")      as HTMLDivElement;
+const sphereContainer = g("sphere-container") as HTMLDivElement;
+const sphereMap       = g("sphere-map")       as HTMLCanvasElement;
+const btnViewGrid     = g("btn-view-grid")    as HTMLButtonElement;
+const btnViewSphere   = g("btn-view-sphere")  as HTMLButtonElement;
+const btnViewHemi     = g("btn-view-hemi")    as HTMLButtonElement;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -58,414 +47,276 @@ function setStatus(msg: string, isError = false): void {
   statusEl.className   = isError ? "error" : "";
 }
 
-function currentSatPoint(): number {
-  return parseFloat(satPointInput.value);
-}
-
-function currentFisheyeX(): number {
-  return parseFloat(fisheyeXSlider.value);
-}
-
-function currentFisheyeY(): number {
-  return parseFloat(fisheyeYSlider.value);
-}
-
-function currentOffset(): number {
-  return parseFloat(reliefOffset.value);
-}
-
-function currentMaxHeight(): number {
-  return parseFloat(reliefMaxhSlider.value);
-}
-
-function currentRelief(): boolean {
-  return viewMode === "grid"   ? reliefState.grid
-       : viewMode === "sphere" ? reliefState.sphere
-       : reliefState.hemi;
-}
+const currentSatPoint  = (s: number) => parseFloat(satPoints[s].value);
+const currentOffset    = (s: number) => parseFloat(reliefOffsets[s].value);
+const currentMaxHeight = (s: number) => parseFloat(reliefMaxhSliders[s].value);
+const currentFisheyeX  = (s: number) => parseFloat(fisheyeXSliders[s].value);
+const currentFisheyeY  = (s: number) => parseFloat(fisheyeYSliders[s].value);
 
 // ── View state ────────────────────────────────────────────────────────────────
 
 type ViewMode = "grid" | "sphere" | "hemisphere";
 let viewMode: ViewMode = "grid";
+
 let sphereRenderer: SphereRenderer | null = null;
-let hemiRenderer: HemisphereRenderer | null = null;
-let gridRenderer3D_: GridRenderer3D | null = null;
+let hemiRenderer:   HemisphereRenderer | null = null;
+let gridRenderer3D: GridRenderer3D | null = null;
 
-const reliefState = { grid: false, sphere: false, hemi: false };
-const linesState  = { grid: false, sphere: false, hemi: false };
+// Per-slot render state
+const reliefState = [false, false];
+const linesState  = [false, false];
 
-function currentLines(): boolean {
-  return viewMode === "grid"   ? linesState.grid
-       : viewMode === "sphere" ? linesState.sphere
-       : linesState.hemi;
+// ── History — one store per slot ──────────────────────────────────────────────
+
+const histories = [new HistoryStore(), new HistoryStore()];
+
+// ── Rendering ─────────────────────────────────────────────────────────────────
+
+function renderSlot(s: number): void {
+  const entry = histories[s].current();
+  if (!entry) return;
+  const grid = entry.payload.grid;
+  const slot = s as 0|1;
+  const disp = reliefState[s];
+  const lns  = linesState[s];
+  const sp   = currentSatPoint(s);
+  const off  = currentOffset(s);
+  const maxH = currentMaxHeight(s);
+
+  if (viewMode === "grid") {
+    gridRenderer3D?.render(slot, grid, sp, off, maxH, lns);
+  } else if (viewMode === "sphere") {
+    sphereRenderer?.render(slot, grid, sp, disp, off, maxH, lns);
+  } else {
+    hemiRenderer?.render(slot, grid, sp, currentFisheyeX(s), currentFisheyeY(s), disp, off, maxH, lns);
+  }
 }
+
+function renderAll(): void {
+  renderSlot(0);
+  renderSlot(1);
+}
+
+// ── View switching ────────────────────────────────────────────────────────────
 
 function setView(mode: ViewMode): void {
   viewMode = mode;
 
-  // Hide everything.
-  canvas.style.display             = "none";
-  grid3dContainer.style.display    = "none";
-  sphereWrap.style.display         = "none";
-  hemiContainer.style.display      = "none";
-  hemiControls.style.display       = "none";
-  btnViewGrid.classList.remove("btn-active");
-  btnViewSphere.classList.remove("btn-active");
-  btnViewHemi.classList.remove("btn-active");
+  grid3dContainer.style.display = "none";
+  sphereWrap.style.display      = "none";
+  hemiContainer.style.display   = "none";
 
-  // Sync relief and lines controls to this view's state.
-  const disp = currentRelief();
-  reliefCheck.checked            = disp;
-  reliefControls.style.display   = disp ? "flex" : "none";
+  btnViewGrid.classList.toggle("btn-active",   mode === "grid");
+  btnViewSphere.classList.toggle("btn-active", mode === "sphere");
+  btnViewHemi.classList.toggle("btn-active",   mode === "hemisphere");
 
-  linesCheck.checked = currentLines();
+  // Fisheye controls visible only in hemisphere mode
+  for (let s = 0; s < 2; s++) {
+    hemiDivs[s].classList.toggle("visible", mode === "hemisphere");
+  }
 
   if (mode === "grid") {
-    btnViewGrid.classList.add("btn-active");
+    grid3dContainer.style.display = "block";
     sphereRenderer?.stop();
     hemiRenderer?.stop();
-    if (disp) {
-      grid3dContainer.style.display = "block";
-      if (!gridRenderer3D_) gridRenderer3D_ = new GridRenderer3D(grid3dContainer);
-      gridRenderer3D_.start();
-    } else {
-      canvas.style.display = "block";
-      gridRenderer3D_?.stop();
-    }
+    if (!gridRenderer3D) gridRenderer3D = new GridRenderer3D(grid3dContainer);
+    gridRenderer3D.start();
   } else if (mode === "sphere") {
     sphereWrap.style.display = "flex";
-    btnViewSphere.classList.add("btn-active");
+    gridRenderer3D?.stop();
     hemiRenderer?.stop();
-    gridRenderer3D_?.stop();
     if (!sphereRenderer) sphereRenderer = new SphereRenderer(sphereContainer, sphereMap);
     sphereRenderer.start();
   } else {
     hemiContainer.style.display = "block";
-    hemiControls.style.display  = "flex";
-    btnViewHemi.classList.add("btn-active");
+    gridRenderer3D?.stop();
     sphereRenderer?.stop();
-    gridRenderer3D_?.stop();
     if (!hemiRenderer) hemiRenderer = new HemisphereRenderer(hemiContainer);
     hemiRenderer.start();
   }
 
-  renderCurrent();
+  renderAll();
 }
 
-// ── Rendering ─────────────────────────────────────────────────────────────────
+// ── Default offset / saturation point ────────────────────────────────────────
 
-/**
- * Re-render the active view from the current history entry and scale.
- * Called whenever the history cursor moves OR the slider changes.
- */
-function renderCurrent(): void {
-  const entry = history.current();
-  if (!entry) {
-    clear(canvas);
-    return;
-  }
-  const disp  = currentRelief();
-  const lns   = currentLines();
-  const off   = currentOffset();
-  const maxH  = currentMaxHeight();
-  if (viewMode === "grid") {
-    if (disp) {
-      gridRenderer3D_?.render(entry.payload.grid, currentSatPoint(), off, maxH, lns);
-    } else {
-      if (lns) renderBars(canvas, entry.payload.grid, currentSatPoint());
-      else     render(canvas, entry.payload.grid, currentSatPoint());
-    }
-  } else if (viewMode === "sphere") {
-    sphereRenderer?.render(entry.payload.grid, currentSatPoint(), disp, off, maxH, lns);
-  } else {
-    hemiRenderer?.render(entry.payload.grid, currentSatPoint(), currentFisheyeX(), currentFisheyeY(), disp, off, maxH, lns);
-  }
-}
-
-// ── History subscription ──────────────────────────────────────────────────────
-
-history.subscribe((state) => {
-  const total  = state.entries.length;
-  const pos    = total === 0 ? 0 : state.cursor + 1;
-
-  historyPos.textContent   = `${pos} / ${total}`;
-  btnBack.disabled         = !history.canGoBack();
-  btnForward.disabled      = !history.canGoForward();
-
-  renderCurrent();
-});
-
-// ── Relief offset auto-compute ────────────────────────────────────────────────
-
-function applySatPoint(grid: Grid): void {
+function applySatPoint(s: number, grid: GridPayload["grid"]): void {
   let max = -Infinity;
   for (const row of grid) for (const v of row) if (v > max) max = v;
-  satPointInput.value = (max > 0 ? max : 1).toFixed(4);
+  satPoints[s].value = (max > 0 ? max : 1).toFixed(4);
 }
 
-function applyDefaultOffset(grid: Grid): void {
+function applyDefaultOffset(s: number, grid: GridPayload["grid"]): void {
   let min = Infinity;
   for (const row of grid) for (const v of row) if (v < min) min = v;
-  reliefOffset.value = (0.01 - min).toFixed(4);
-  if (normalizeCheck.checked) applySatPoint(grid);
+  reliefOffsets[s].value = (0.01 - min).toFixed(4);
+  if (normalizeChecks[s].checked) applySatPoint(s, grid);
 }
 
 // ── Data fetching ─────────────────────────────────────────────────────────────
 
-/**
- * Fetch the current grid from the backend and push it onto the history stack.
- * Displays a status message on error.
- */
-async function loadGrid(): Promise<void> {
+async function loadGrid(s: number): Promise<void> {
   setStatus("Loading…");
   try {
     const res = await fetch("/api/grid");
-
-    // 404 means no data file exists yet — show the empty state, not an error.
-    if (res.status === 404) {
-      setStatus("No data — write a GridPayload JSON to data/grid.json, then Reload.");
-      clear(canvas);
-      return;
-    }
-
-    if (!res.ok) {
-      throw new Error(`Server responded with ${res.status} ${res.statusText}`);
-    }
-
+    if (res.status === 404) { setStatus("No data — write a GridPayload JSON to data/grid.json, then Reload."); return; }
+    if (!res.ok) throw new Error(`Server responded with ${res.status} ${res.statusText}`);
     const payload = (await res.json()) as GridPayload;
-
-    if (!Array.isArray(payload.grid) || payload.grid.length === 0) {
-      setStatus("No data — grid array is empty.");
-      clear(canvas);
-      return;
-    }
-
-    history.push(payload);
-    applyDefaultOffset(payload.grid);
-    setStatus(payload.meta?.label ? `Loaded: ${payload.meta.label}` : "");
+    if (!Array.isArray(payload.grid) || payload.grid.length === 0) { setStatus("No data — grid array is empty."); return; }
+    histories[s].push(payload);
+    applyDefaultOffset(s, payload.grid);
+    setStatus(payload.meta?.label ? `A: Loaded ${payload.meta.label}` : "");
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    setStatus(`Error: ${msg}`, true);
+    setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`, true);
   }
 }
 
-/**
- * Fetch a named built-in dataset from GET /api/grid/:name and push it onto
- * the history stack.
- */
-async function loadNamedDataset(name: string): Promise<void> {
+async function loadNamedDataset(s: number, name: string): Promise<void> {
   setStatus(`Loading "${name}"…`);
   try {
     const res = await fetch(`/api/grid/${encodeURIComponent(name)}`);
-
     if (!res.ok) {
       const body = await res.json().catch(() => ({})) as { error?: string };
       throw new Error(body.error ?? `${res.status} ${res.statusText}`);
     }
-
     const payload = (await res.json()) as GridPayload;
-
-    if (!Array.isArray(payload.grid) || payload.grid.length === 0) {
-      setStatus("Dataset grid array is empty.");
-      clear(canvas);
-      return;
-    }
-
-    history.push(payload);
-    applyDefaultOffset(payload.grid);
+    if (!Array.isArray(payload.grid) || payload.grid.length === 0) { setStatus("Dataset grid array is empty."); return; }
+    histories[s].push(payload);
+    applyDefaultOffset(s, payload.grid);
     setStatus(payload.meta?.label ? `Loaded: ${payload.meta.label}` : `Loaded: ${name}`);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    setStatus(`Error: ${msg}`, true);
+    setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`, true);
   }
 }
 
-/**
- * Populate the dataset <select> by fetching GET /api/grid/list.
- * Silently skips if the endpoint is unavailable (e.g. backend not running).
- */
-async function populateDatasetList(): Promise<void> {
-  try {
-    const res = await fetch("/api/grid/list");
-    if (!res.ok) return;
-
-    const body = (await res.json()) as { datasets: string[] };
-    const names = body.datasets ?? [];
-
-    // Remove any previously injected options (keep the placeholder).
-    while (datasetSelect.options.length > 1) {
-      datasetSelect.remove(1);
-    }
-
-    for (const name of names) {
-      const opt   = document.createElement("option");
-      opt.value   = name;
-      opt.textContent = name;
-      datasetSelect.appendChild(opt);
-    }
-  } catch {
-    // Backend not available — leave the select empty.
-  }
-}
-
-/**
- * Read a local JSON file chosen by the user, upload it to the backend via
- * POST /api/grid/upload, then load the active grid.
- */
-async function handleFileUpload(file: File): Promise<void> {
+async function handleFileUpload(s: number, file: File): Promise<void> {
   setStatus(`Reading "${file.name}"…`);
   try {
-    const text = await file.text();
-
-    // Parse locally first so we can give a friendly error before hitting the network.
     let payload: GridPayload;
-    try {
-      payload = JSON.parse(text) as GridPayload;
-    } catch (e) {
-      throw new Error(`"${file.name}" is not valid JSON: ${(e as Error).message}`);
-    }
-
-    if (!Array.isArray(payload.grid) || payload.grid.length === 0) {
+    try { payload = JSON.parse(await file.text()) as GridPayload; }
+    catch (e) { throw new Error(`"${file.name}" is not valid JSON: ${(e as Error).message}`); }
+    if (!Array.isArray(payload.grid) || payload.grid.length === 0)
       throw new Error(`"${file.name}" must contain a non-empty "grid" array.`);
-    }
-
-    // Attach the filename as a label if the payload has no label yet.
-    if (!payload.meta?.label) {
-      payload = {
-        ...payload,
-        meta: { ...payload.meta, label: file.name.replace(/\.json$/i, "") },
-      };
-    }
-
+    if (!payload.meta?.label)
+      payload = { ...payload, meta: { ...payload.meta, label: file.name.replace(/\.json$/i, "") } };
     setStatus(`Uploading "${file.name}"…`);
     const res = await fetch("/api/grid/upload", {
-      method:  "POST",
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify(payload),
+      body: JSON.stringify(payload),
     });
-
     if (!res.ok) {
       const body = await res.json().catch(() => ({})) as { error?: string };
       throw new Error(body.error ?? `Upload failed: ${res.status} ${res.statusText}`);
     }
-
-    // Now fetch the active grid (which is the just-uploaded payload).
-    await loadGrid();
+    await loadGrid(s);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    setStatus(`Error: ${msg}`, true);
+    setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`, true);
   } finally {
-    // Reset the input so the same file can be re-selected.
-    fileInput.value = "";
+    fileInputs[s].value = "";
   }
 }
 
-// ── Event listeners ───────────────────────────────────────────────────────────
+async function populateDatasetList(): Promise<void> {
+  try {
+    const res = await fetch("/api/grid/list");
+    if (!res.ok) return;
+    const body = (await res.json()) as { datasets: string[] };
+    for (const sel of datasetSelects) {
+      while (sel.options.length > 1) sel.remove(1);
+      for (const name of body.datasets ?? []) {
+        const opt = document.createElement("option");
+        opt.value = opt.textContent = name;
+        sel.appendChild(opt);
+      }
+    }
+  } catch { /* backend unavailable */ }
+}
+
+// ── Event listeners — wired in a loop for both slots ─────────────────────────
+
+for (let s = 0; s < 2; s++) {
+  // History subscription — re-render on every state change
+  histories[s].subscribe((state) => {
+    const total = state.entries.length;
+    const pos   = total === 0 ? 0 : state.cursor + 1;
+    historyPos[s].textContent          = `${pos} / ${total}`;
+    (btnBack[s] as HTMLButtonElement).disabled    = state.cursor <= 0;
+    (btnForward[s] as HTMLButtonElement).disabled = state.cursor >= total - 1;
+    renderSlot(s);
+  });
+
+  // Navigation
+  btnBack[s].addEventListener("click",    () => histories[s].back());
+  btnForward[s].addEventListener("click", () => histories[s].forward());
+  btnReload[s].addEventListener("click",  () => { void loadGrid(s); });
+
+  // Normalize checkbox
+  normalizeChecks[s].addEventListener("change", () => {
+    satPoints[s].disabled = normalizeChecks[s].checked;
+    if (normalizeChecks[s].checked) {
+      const entry = histories[s].current();
+      if (entry) applySatPoint(s, entry.payload.grid);
+    }
+    renderSlot(s);
+  });
+
+  // Saturation point
+  satPoints[s].addEventListener("input", () => renderSlot(s));
+
+  // Dataset select
+  datasetSelects[s].addEventListener("change", () => {
+    const name = datasetSelects[s].value;
+    if (!name) return;
+    datasetSelects[s].value = "";
+    void loadNamedDataset(s, name);
+  });
+
+  // File picker
+  fileInputs[s].addEventListener("change", () => {
+    const file = fileInputs[s].files?.[0];
+    if (file) void handleFileUpload(s, file);
+  });
+
+  // Lines checkbox
+  linesChecks[s].addEventListener("change", () => {
+    linesState[s] = linesChecks[s].checked;
+    renderSlot(s);
+  });
+
+  // Relief checkbox
+  reliefChecks[s].addEventListener("change", () => {
+    reliefState[s] = reliefChecks[s].checked;
+    reliefDivs[s].classList.toggle("visible", reliefState[s]);
+    renderSlot(s);
+  });
+
+  // Relief controls
+  reliefOffsets[s].addEventListener("input",     () => renderSlot(s));
+  reliefMaxhSliders[s].addEventListener("input", () => {
+    reliefMaxhVals[s].textContent = currentMaxHeight(s).toFixed(1);
+    renderSlot(s);
+  });
+
+  // Fisheye
+  fisheyeXSliders[s].addEventListener("input", () => {
+    fisheyeXVals[s].textContent = currentFisheyeX(s).toFixed(2);
+    renderSlot(s);
+  });
+  fisheyeYSliders[s].addEventListener("input", () => {
+    fisheyeYVals[s].textContent = currentFisheyeY(s).toFixed(2);
+    renderSlot(s);
+  });
+}
+
+// ── View toggle ───────────────────────────────────────────────────────────────
 
 btnViewGrid.addEventListener("click",   () => setView("grid"));
 btnViewSphere.addEventListener("click", () => setView("sphere"));
 btnViewHemi.addEventListener("click",   () => setView("hemisphere"));
 
-// Lens sliders — re-render hemisphere without re-fetching.
-fisheyeXSlider.addEventListener("input", () => {
-  fisheyeXVal.textContent = currentFisheyeX().toFixed(2);
-  renderCurrent();
-});
-fisheyeYSlider.addEventListener("input", () => {
-  fisheyeYVal.textContent = currentFisheyeY().toFixed(2);
-  renderCurrent();
-});
-
-// Lines button — per-view toggle.
-linesCheck.addEventListener("change", () => {
-  const on = linesCheck.checked;
-  if (viewMode === "grid")        linesState.grid   = on;
-  else if (viewMode === "sphere") linesState.sphere = on;
-  else                            linesState.hemi   = on;
-
-  renderCurrent();
-});
-
-// Relief checkbox — toggle per-view state; swap canvas ↔ 3D container for grid.
-reliefCheck.addEventListener("change", () => {
-  const on = reliefCheck.checked;
-  if (viewMode === "grid")        reliefState.grid   = on;
-  else if (viewMode === "sphere") reliefState.sphere = on;
-  else                            reliefState.hemi   = on;
-
-  reliefControls.style.display = on ? "flex" : "none";
-
-  if (viewMode === "grid") {
-    if (on) {
-      canvas.style.display          = "none";
-      grid3dContainer.style.display = "block";
-      if (!gridRenderer3D_) gridRenderer3D_ = new GridRenderer3D(grid3dContainer);
-      gridRenderer3D_.start();
-    } else {
-      grid3dContainer.style.display = "none";
-      gridRenderer3D_?.stop();
-      canvas.style.display = "block";
-    }
-  }
-  renderCurrent();
-});
-
-// Relief offset — re-render on change.
-reliefOffset.addEventListener("input", () => { renderCurrent(); });
-
-// Relief max-height slider.
-reliefMaxhSlider.addEventListener("input", () => {
-  reliefMaxhVal.textContent = currentMaxHeight().toFixed(1);
-  renderCurrent();
-});
-
-// Normalize checkbox — auto-sets saturation point when checked.
-normalizeCheck.addEventListener("change", () => {
-  satPointInput.disabled = normalizeCheck.checked;
-  if (normalizeCheck.checked) {
-    const entry = history.current();
-    if (entry) applySatPoint(entry.payload.grid);
-  }
-  renderCurrent();
-});
-
-// Saturation point — re-render on manual edit.
-satPointInput.addEventListener("input", () => { renderCurrent(); });
-
-// Reload — fetch fresh data from the server.
-btnReload.addEventListener("click", () => {
-  void loadGrid();
-});
-
-// History navigation — move cursor, re-render.
-btnBack.addEventListener("click", () => {
-  history.back();
-  // renderCurrent() is called via the history subscription above.
-});
-
-btnForward.addEventListener("click", () => {
-  history.forward();
-  // renderCurrent() is called via the history subscription above.
-});
-
-// Dataset select — load the chosen built-in dataset.
-datasetSelect.addEventListener("change", () => {
-  const name = datasetSelect.value;
-  if (!name) return;
-  // Reset to placeholder so the same item can be re-selected later.
-  datasetSelect.value = "";
-  void loadNamedDataset(name);
-});
-
-// File input — triggered when the user picks a file via the label/button.
-fileInput.addEventListener("change", () => {
-  const file = fileInput.files?.[0];
-  if (!file) return;
-  void handleFileUpload(file);
-});
-
 // ── Initial load ──────────────────────────────────────────────────────────────
 
 void populateDatasetList();
-void loadGrid();
+setView("grid");
+void loadGrid(0);

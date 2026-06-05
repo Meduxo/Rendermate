@@ -1,98 +1,49 @@
-/**
- * frontend/src/historyStore.ts
- *
- * Manages the in-memory history of loaded grid states.
- *
- * Design principles:
- * - Pure module-level state (no framework, no global object pollution).
- * - All mutations go through exported functions — no direct state access.
- * - Navigation (back/forward) never triggers a network request.
- * - Pushing a new entry while the cursor is not at the end truncates the
- *   "future" entries, matching the behaviour of browser history.
- */
-// ── Internal state ────────────────────────────────────────────────────────────
-let _seq = 0;
-let _state = { entries: [], cursor: -1 };
-/** Registered listeners called whenever the history state changes. */
-const _listeners = [];
-// ── Private helpers ───────────────────────────────────────────────────────────
-function _notify() {
-    // Provide a shallow copy so listeners cannot mutate internal state.
-    const snapshot = { ..._state, entries: [..._state.entries] };
-    for (const fn of _listeners)
-        fn(snapshot);
-}
-// ── Public API ────────────────────────────────────────────────────────────────
-/**
- * Subscribe to history state changes.
- * The callback is invoked immediately with the current state, then on every
- * subsequent change.
- *
- * @returns An unsubscribe function.
- */
-export function subscribe(fn) {
-    _listeners.push(fn);
-    fn({ ..._state, entries: [..._state.entries] }); // immediate call
-    return () => {
-        const idx = _listeners.indexOf(fn);
-        if (idx !== -1)
-            _listeners.splice(idx, 1);
-    };
-}
-/**
- * Push a new GridPayload onto the history stack.
- *
- * If the cursor is not at the end of the stack (i.e. the user navigated
- * backward before reloading), all entries after the cursor are discarded
- * before appending the new one.
- */
-export function push(payload) {
-    const entry = {
-        seq: ++_seq,
-        payload,
-        loadedAt: new Date(),
-    };
-    // Truncate any "future" entries beyond the current cursor.
-    _state.entries = _state.entries.slice(0, _state.cursor + 1);
-    _state.entries.push(entry);
-    _state.cursor = _state.entries.length - 1;
-    _notify();
-}
-/**
- * Move the cursor one step backward in history.
- * No-op if already at the oldest entry.
- */
-export function back() {
-    if (!canGoBack())
-        return;
-    _state = { ..._state, cursor: _state.cursor - 1 };
-    _notify();
-}
-/**
- * Move the cursor one step forward in history.
- * No-op if already at the newest entry.
- */
-export function forward() {
-    if (!canGoForward())
-        return;
-    _state = { ..._state, cursor: _state.cursor + 1 };
-    _notify();
-}
-/** Returns the entry at the current cursor position, or `null` if empty. */
-export function current() {
-    if (_state.cursor < 0 || _state.cursor >= _state.entries.length)
-        return null;
-    return _state.entries[_state.cursor];
-}
-/** True if the cursor can move backward. */
-export function canGoBack() {
-    return _state.cursor > 0;
-}
-/** True if the cursor can move forward. */
-export function canGoForward() {
-    return _state.cursor < _state.entries.length - 1;
-}
-/** Total number of entries in the history stack. */
-export function size() {
-    return _state.entries.length;
+export class HistoryStore {
+    constructor() {
+        this._seq = 0;
+        this._state = { entries: [], cursor: -1 };
+        this._listeners = [];
+    }
+    _notify() {
+        const snap = { ...this._state, entries: [...this._state.entries] };
+        for (const fn of this._listeners)
+            fn(snap);
+    }
+    subscribe(fn) {
+        this._listeners.push(fn);
+        fn({ ...this._state, entries: [...this._state.entries] });
+        return () => {
+            const idx = this._listeners.indexOf(fn);
+            if (idx !== -1)
+                this._listeners.splice(idx, 1);
+        };
+    }
+    push(payload) {
+        const entry = { seq: ++this._seq, payload, loadedAt: new Date() };
+        this._state.entries = this._state.entries.slice(0, this._state.cursor + 1);
+        this._state.entries.push(entry);
+        this._state.cursor = this._state.entries.length - 1;
+        this._notify();
+    }
+    back() {
+        if (!this.canGoBack())
+            return;
+        this._state = { ...this._state, cursor: this._state.cursor - 1 };
+        this._notify();
+    }
+    forward() {
+        if (!this.canGoForward())
+            return;
+        this._state = { ...this._state, cursor: this._state.cursor + 1 };
+        this._notify();
+    }
+    current() {
+        const s = this._state;
+        if (s.cursor < 0 || s.cursor >= s.entries.length)
+            return null;
+        return s.entries[s.cursor];
+    }
+    canGoBack() { return this._state.cursor > 0; }
+    canGoForward() { return this._state.cursor < this._state.entries.length - 1; }
+    size() { return this._state.entries.length; }
 }

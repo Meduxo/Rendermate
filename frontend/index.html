@@ -5,180 +5,103 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Rendermate</title>
     <style>
-      *, *::before, *::after {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-      }
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
       html, body {
         background: #111;
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: flex-start;
         min-height: 100vh;
-        padding: 24px;
-        gap: 16px;
+        padding: 16px;
+        gap: 10px;
         font-family: monospace;
       }
 
-      /* ── Controls bar ─────────────────────────────────────────── */
-      #controls {
+      /* ── Object control rows ─────────────────────────────────── */
+      .obj-controls {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: center;
+        width: 100%;
+        max-width: 900px;
+        padding: 6px 10px;
+        border-radius: 6px;
+      }
+      #controls-1 { border: 1px solid #1e3a1e; background: #111a11; }
+      #controls-2 { border: 1px solid #1a1e3a; background: #11111a; }
+
+      .obj-label {
+        font-size: 13px;
+        font-weight: bold;
+        padding: 2px 8px;
+        border-radius: 4px;
+        user-select: none;
+      }
+      #controls-1 .obj-label { color: #6f9; background: #1a2e1a; }
+      #controls-2 .obj-label { color: #69f; background: #1a1a2e; }
+
+      /* ── Shared view-toggle row ──────────────────────────────── */
+      #controls-shared {
+        display: flex;
+        align-items: center;
+        gap: 8px;
         flex-wrap: wrap;
         justify-content: center;
       }
 
-      /* Saturation point input */
-      #sat-point {
-        background: #2a2a2a;
-        color: #ccc;
-        border: 1px solid #555;
-        border-radius: 4px;
-        padding: 2px 6px;
-        font-size: 12px;
-        font-family: monospace;
-        width: 80px;
-        outline: none;
-      }
-      #sat-point:disabled {
-        opacity: 0.5;
-        cursor: default;
-      }
-
-      /* Shared button style */
+      /* ── Buttons ─────────────────────────────────────────────── */
       .btn {
         background: #2a2a2a;
         color: #ccc;
         border: 1px solid #555;
         border-radius: 4px;
-        padding: 4px 14px;
-        font-size: 13px;
+        padding: 4px 12px;
+        font-size: 12px;
         font-family: monospace;
         cursor: pointer;
         line-height: 1.6;
         transition: background 0.1s;
         user-select: none;
       }
-      .btn:hover:not(:disabled) {
-        background: #3a3a3a;
-      }
-      .btn:disabled {
-        opacity: 0.35;
-        cursor: default;
-      }
+      .btn:hover:not(:disabled) { background: #3a3a3a; }
+      .btn:disabled { opacity: 0.35; cursor: default; }
+      .btn-active { background: #444; color: #fff; border-color: #888; }
 
-      /* History position indicator */
-      #history-pos {
+      /* ── History position ────────────────────────────────────── */
+      .history-pos {
         color: #666;
-        font-size: 12px;
-        min-width: 60px;
+        font-size: 11px;
+        min-width: 44px;
         text-align: center;
       }
 
-      /* ── Separator ────────────────────────────────────────────── */
-      .sep {
-        width: 1px;
-        height: 20px;
-        background: #333;
-        flex-shrink: 0;
-      }
+      /* ── Separators ──────────────────────────────────────────── */
+      .sep { width: 1px; height: 18px; background: #333; flex-shrink: 0; }
 
-      /* ── Dataset select ───────────────────────────────────────── */
-      #dataset-select {
+      /* ── Dataset select ──────────────────────────────────────── */
+      .dataset-select {
         background: #2a2a2a;
         color: #ccc;
         border: 1px solid #555;
         border-radius: 4px;
-        padding: 4px 8px;
-        font-size: 13px;
+        padding: 3px 6px;
+        font-size: 12px;
         font-family: monospace;
         cursor: pointer;
-        line-height: 1.6;
         outline: none;
-        max-width: 200px;
+        max-width: 160px;
       }
-      #dataset-select:hover {
-        background: #3a3a3a;
-      }
-      #dataset-select option {
-        background: #1e1e1e;
-        color: #ccc;
-      }
+      .dataset-select:hover { background: #3a3a3a; }
+      .dataset-select option { background: #1e1e1e; color: #ccc; }
 
-      /* ── File picker ──────────────────────────────────────────── */
-      /* Hide the native input; the label acts as the button. */
-      #file-input {
-        display: none;
-      }
-      #btn-open-file {
-        position: relative;
-        overflow: hidden;
-      }
+      /* ── File picker ─────────────────────────────────────────── */
+      .file-input-hidden { display: none; }
 
-      /* ── Canvas ───────────────────────────────────────────────── */
-      #grid {
-        display: block;
-        image-rendering: pixelated;
-        image-rendering: crisp-edges;
-      }
-
-      /* ── Sphere wrap ──────────────────────────────────────────── */
-      #sphere-wrap {
-        display: none;
-        flex-direction: column;
-        align-items: center;
-        gap: 16px;
-      }
-      #sphere-container {
-        width: 512px;
-        height: 512px;
-      }
-      #sphere-container canvas {
-        display: block;
-      }
-
-      /* ── Coverage map ─────────────────────────────────────────── */
-      #map-wrap {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 6px;
-      }
-      .map-label {
-        color: #555;
-        font-size: 11px;
-        letter-spacing: 0.05em;
-      }
-      #sphere-map {
-        display: block;
-        image-rendering: pixelated;
-        image-rendering: crisp-edges;
-        border: 1px solid #2a2a2a;
-      }
-
-      /* ── Active view button ───────────────────────────────────── */
-      .btn-active {
-        background: #444;
-        color: #fff;
-        border-color: #888;
-      }
-
-      /* ── 3D grid container ────────────────────────────────────── */
-      #grid3d-container {
-        display: none;
-        width: 512px;
-        height: 512px;
-      }
-      #grid3d-container canvas {
-        display: block;
-      }
-
-      /* ── Relief controls ──────────────────────────────────────── */
-      .relief-check-label {
+      /* ── Checkboxes / labels ─────────────────────────────────── */
+      .check-label {
         display: flex;
         align-items: center;
         gap: 4px;
@@ -188,165 +111,236 @@
         font-family: monospace;
         user-select: none;
       }
-      #relief-controls {
-        display: none;
-        align-items: center;
-        gap: 6px;
-      }
-      #relief-offset {
+
+      /* ── Number inputs ───────────────────────────────────────── */
+      .num-input {
         background: #2a2a2a;
         color: #ccc;
         border: 1px solid #555;
         border-radius: 4px;
-        padding: 2px 6px;
+        padding: 2px 5px;
         font-size: 12px;
         font-family: monospace;
         width: 72px;
         outline: none;
       }
+      .num-input:disabled { opacity: 0.5; cursor: default; }
 
-      /* ── Fisheye slider (hemisphere view only) ────────────────── */
-      #hemi-controls {
-        display: none;
-        align-items: center;
-        gap: 6px;
-      }
-      .ctrl-label {
-        color: #666;
-        font-size: 12px;
-        font-family: monospace;
-      }
-      .fisheye-slider {
+      /* ── Sliders ─────────────────────────────────────────────── */
+      .ctrl-slider {
         -webkit-appearance: none;
         appearance: none;
-        width: 100px;
+        width: 90px;
         height: 4px;
         background: #444;
         border-radius: 2px;
         outline: none;
         cursor: pointer;
       }
-      .fisheye-slider::-webkit-slider-thumb {
+      .ctrl-slider::-webkit-slider-thumb {
         -webkit-appearance: none;
-        appearance: none;
-        width: 14px;
-        height: 14px;
+        width: 13px; height: 13px;
         border-radius: 50%;
         background: #ccc;
         cursor: pointer;
       }
-      .fisheye-slider::-moz-range-thumb {
-        width: 14px;
-        height: 14px;
+      .ctrl-slider::-moz-range-thumb {
+        width: 13px; height: 13px;
         border-radius: 50%;
         background: #ccc;
         cursor: pointer;
         border: none;
       }
-      .ctrl-val {
-        color: #888;
-        font-size: 12px;
-        font-family: monospace;
-        min-width: 30px;
+
+      .ctrl-label { color: #666; font-size: 11px; font-family: monospace; }
+      .ctrl-val   { color: #888; font-size: 11px; font-family: monospace; min-width: 28px; }
+
+      /* ── Inline control groups (shown/hidden per mode) ───────── */
+      .inline-group {
+        display: none;
+        align-items: center;
+        gap: 6px;
+      }
+      .inline-group.visible { display: flex; }
+
+      /* ── Canvas / 3D containers ──────────────────────────────── */
+      #grid3d-container,
+      #hemi-container {
+        display: none;
+        width: 680px;
+        height: 480px;
+      }
+      #grid3d-container canvas,
+      #hemi-container canvas { display: block; }
+
+      #sphere-wrap {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+      }
+      #sphere-container { width: 680px; height: 480px; }
+      #sphere-container canvas { display: block; }
+
+      #map-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 5px;
+      }
+      .map-label { color: #555; font-size: 11px; letter-spacing: 0.05em; }
+      #sphere-map {
+        display: block;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+        border: 1px solid #2a2a2a;
       }
 
-      /* ── Status / error message ───────────────────────────────── */
-      #status {
-        color: #888;
-        font-size: 12px;
-        min-height: 16px;
-      }
-      #status.error {
-        color: #e06c75;
-      }
+      /* ── Status ──────────────────────────────────────────────── */
+      #status { color: #888; font-size: 11px; min-height: 15px; }
+      #status.error { color: #e06c75; }
     </style>
   </head>
   <body>
-    <div id="controls">
-      <!-- History navigation -->
-      <button id="btn-back"    class="btn" disabled>&#8592;</button>
-      <span   id="history-pos">0 / 0</span>
-      <button id="btn-forward" class="btn" disabled>&#8594;</button>
 
-      <!-- Reload from server -->
-      <button id="btn-reload" class="btn">Reload</button>
+    <!-- ── Object A controls (top) ─────────────────────────────── -->
+    <div id="controls-1" class="obj-controls">
+      <span class="obj-label">A</span>
 
-      <!-- Normalize / saturation point -->
-      <label class="relief-check-label" title="Auto-normalize to max grid value">
-        <input id="normalize-check" type="checkbox" checked />
-        normalize
-      </label>
-      <input id="sat-point" type="number" step="0.0001" value="1" disabled title="Saturation point — value that maps to full brightness / max height" />
+      <button id="btn-back-1"    class="btn" disabled>&#8592;</button>
+      <span   id="history-pos-1" class="history-pos">0 / 0</span>
+      <button id="btn-forward-1" class="btn" disabled>&#8594;</button>
+
+      <button id="btn-reload-1" class="btn">Reload</button>
 
       <div class="sep"></div>
 
-      <!-- Built-in dataset selector -->
-      <select id="dataset-select" title="Load a built-in dataset">
+      <label class="check-label">
+        <input id="normalize-check-1" type="checkbox" checked /> normalize
+      </label>
+      <input id="sat-point-1" class="num-input" type="number" step="0.0001" value="1" disabled
+             title="Saturation point" />
+
+      <div class="sep"></div>
+
+      <select id="dataset-select-1" class="dataset-select" title="Load a built-in dataset">
         <option value="" disabled selected>— datasets —</option>
       </select>
-
-      <!-- Local file picker -->
-      <label class="btn" id="btn-open-file" title="Open a local JSON file">
+      <label class="btn" title="Open a local JSON file">
         Open file…
-        <input id="file-input" type="file" accept=".json,application/json" />
+        <input id="file-input-1" class="file-input-hidden" type="file" accept=".json,application/json" />
       </label>
 
       <div class="sep"></div>
 
-      <!-- View toggle -->
-      <button id="btn-view-grid"  class="btn btn-active" title="Flat grid view">Grid</button>
-      <button id="btn-view-sphere" class="btn"           title="Sphere view">Sphere</button>
-      <button id="btn-view-hemi"   class="btn"           title="Hemisphere view">Hemi</button>
-
-      <!-- Fisheye controls — visible only in hemisphere mode -->
-      <div id="hemi-controls">
-        <div class="sep"></div>
-        <span class="ctrl-label">lens x</span>
-        <input id="fisheye-x-slider" class="fisheye-slider" type="range" min="0" max="5" step="0.05" value="0" />
-        <span id="fisheye-x-val" class="ctrl-val">0.00</span>
-        <span class="ctrl-label">lens y</span>
-        <input id="fisheye-y-slider" class="fisheye-slider" type="range" min="0" max="5" step="0.05" value="0" />
-        <span id="fisheye-y-val" class="ctrl-val">0.00</span>
-      </div>
-
-      <div class="sep"></div>
-
-      <!-- Lines mode toggle — state is per-view -->
-      <label class="relief-check-label" title="Replace mesh with lines from center to each sample">
-        <input id="lines-check" type="checkbox" />
-        lines
+      <label class="check-label">
+        <input id="lines-check-1" type="checkbox" /> lines
+      </label>
+      <label class="check-label">
+        <input id="relief-check-1" type="checkbox" /> relief
       </label>
 
-      <!-- Relief mode toggle — state is per-view -->
-      <label class="relief-check-label" title="Use matrix values as radial depth">
-        <input id="relief-check" type="checkbox" />
-        relief
-      </label>
-
-      <!-- Relief controls — visible when relief is enabled -->
-      <div id="relief-controls">
+      <!-- Relief controls — shown when relief is on -->
+      <div id="relief-controls-1" class="inline-group">
         <div class="sep"></div>
         <span class="ctrl-label">offset</span>
-        <input id="relief-offset" type="number" step="0.0001" value="0.01" />
-        <span class="ctrl-label">max h</span>
-        <input id="relief-maxh-slider" class="fisheye-slider" type="range" min="0.1" max="5" step="0.1" value="1" />
-        <span id="relief-maxh-val" class="ctrl-val">1.0</span>
+        <input id="relief-offset-1" class="num-input" type="number" step="0.0001" value="0.01" />
+        <span class="ctrl-label">max&nbsp;h</span>
+        <input id="relief-maxh-slider-1" class="ctrl-slider" type="range" min="0.1" max="5" step="0.1" value="1" />
+        <span id="relief-maxh-val-1" class="ctrl-val">1.0</span>
+      </div>
+
+      <!-- Fisheye controls — shown when view = hemi -->
+      <div id="hemi-controls-1" class="inline-group">
+        <div class="sep"></div>
+        <span class="ctrl-label">lens&nbsp;x</span>
+        <input id="fisheye-x-slider-1" class="ctrl-slider" type="range" min="0" max="5" step="0.05" value="0" />
+        <span id="fisheye-x-val-1" class="ctrl-val">0.00</span>
+        <span class="ctrl-label">lens&nbsp;y</span>
+        <input id="fisheye-y-slider-1" class="ctrl-slider" type="range" min="0" max="5" step="0.05" value="0" />
+        <span id="fisheye-y-val-1" class="ctrl-val">0.00</span>
       </div>
     </div>
 
-    <canvas id="grid"></canvas>
+    <!-- ── Shared view toggle ───────────────────────────────────── -->
+    <div id="controls-shared">
+      <button id="btn-view-grid"   class="btn btn-active">Grid</button>
+      <button id="btn-view-sphere" class="btn">Sphere</button>
+      <button id="btn-view-hemi"   class="btn">Hemi</button>
+    </div>
+
+    <!-- ── Canvas area ──────────────────────────────────────────── -->
     <div id="grid3d-container"></div>
-    <div id="hemi-container" style="display:none; width:512px; height:512px;"></div>
+    <div id="hemi-container"></div>
     <div id="sphere-wrap">
       <div id="sphere-container"></div>
       <div id="map-wrap">
-        <span class="map-label">coverage map</span>
+        <span class="map-label">coverage map — object A</span>
         <canvas id="sphere-map"></canvas>
       </div>
     </div>
+
+    <!-- ── Object B controls (bottom) ─────────────────────────── -->
+    <div id="controls-2" class="obj-controls">
+      <span class="obj-label">B</span>
+
+      <button id="btn-back-2"    class="btn" disabled>&#8592;</button>
+      <span   id="history-pos-2" class="history-pos">0 / 0</span>
+      <button id="btn-forward-2" class="btn" disabled>&#8594;</button>
+
+      <button id="btn-reload-2" class="btn">Reload</button>
+
+      <div class="sep"></div>
+
+      <label class="check-label">
+        <input id="normalize-check-2" type="checkbox" checked /> normalize
+      </label>
+      <input id="sat-point-2" class="num-input" type="number" step="0.0001" value="1" disabled
+             title="Saturation point" />
+
+      <div class="sep"></div>
+
+      <select id="dataset-select-2" class="dataset-select" title="Load a built-in dataset">
+        <option value="" disabled selected>— datasets —</option>
+      </select>
+      <label class="btn" title="Open a local JSON file">
+        Open file…
+        <input id="file-input-2" class="file-input-hidden" type="file" accept=".json,application/json" />
+      </label>
+
+      <div class="sep"></div>
+
+      <label class="check-label">
+        <input id="lines-check-2" type="checkbox" /> lines
+      </label>
+      <label class="check-label">
+        <input id="relief-check-2" type="checkbox" /> relief
+      </label>
+
+      <!-- Relief controls — shown when relief is on -->
+      <div id="relief-controls-2" class="inline-group">
+        <div class="sep"></div>
+        <span class="ctrl-label">offset</span>
+        <input id="relief-offset-2" class="num-input" type="number" step="0.0001" value="0.01" />
+        <span class="ctrl-label">max&nbsp;h</span>
+        <input id="relief-maxh-slider-2" class="ctrl-slider" type="range" min="0.1" max="5" step="0.1" value="1" />
+        <span id="relief-maxh-val-2" class="ctrl-val">1.0</span>
+      </div>
+
+      <!-- Fisheye controls — shown when view = hemi -->
+      <div id="hemi-controls-2" class="inline-group">
+        <div class="sep"></div>
+        <span class="ctrl-label">lens&nbsp;x</span>
+        <input id="fisheye-x-slider-2" class="ctrl-slider" type="range" min="0" max="5" step="0.05" value="0" />
+        <span id="fisheye-x-val-2" class="ctrl-val">0.00</span>
+        <span class="ctrl-label">lens&nbsp;y</span>
+        <input id="fisheye-y-slider-2" class="ctrl-slider" type="range" min="0" max="5" step="0.05" value="0" />
+        <span id="fisheye-y-val-2" class="ctrl-val">0.00</span>
+      </div>
+    </div>
+
     <div id="status"></div>
 
-    <!-- Vite resolves this TypeScript entry point at build time -->
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
